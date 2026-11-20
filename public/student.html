@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>تطبيق الطالب — تعلّم مع الهيثم</title>
+<meta name="theme-color" content="#173f36">
+<link rel="manifest" href="/manifest-public.webmanifest">
+<link rel="icon" href="/icons/taallam-learn.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/student.css">
+<script src="/offline.js"></script><script src="/live.js"></script><script src="/tools.js"></script></head>
+<body>
+<div id="app">
+  <div class="top">
+    <a class="chip" href="/" aria-label="الصفحة الرئيسية">🏠</a>
+    <div class="brand">تعلّم مع الهيثم</div>
+    <button class="chip" id="aboutBtn" type="button" aria-label="حول التطبيق">ℹ️</button>
+    <span class="chip stars" aria-label="نجومي">⭐ <span id="starCount">٠</span></span>
+    <button class="chip" id="avatarBtn" type="button" aria-label="إعداداتي">🦉</button>
+  </div>
+  <div class="greet"><div class="owl" id="owl">🦉</div><div class="bubble" id="bubble"></div></div>
+  <main class="grid" id="grid" aria-label="القائمة الرئيسية"></main>
+</div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-bar">
+    <button class="round" id="sBack" type="button" aria-label="رجوع">→</button>
+    <h2 id="sheetTitle"></h2>
+    <button class="round" id="sClose" type="button" aria-label="إغلاق">✕</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+<script src="/student.js"></script>
+<script src="/platform.js"></script>
+<script src="/install.js"></script>
+</body>
+</html>
