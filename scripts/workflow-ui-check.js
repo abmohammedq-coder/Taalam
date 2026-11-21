@@ -1,4 +1,4 @@
-// v2.91.0: checks for progressive-disclosure workflows requested for book upload and student roster.
+// v2.92.0: checks for compact attendance rows, grade-first certificates, and academic-year entry.
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -14,7 +14,12 @@ ck('each add choice opens only its own modal form',school.includes("UI.openSecti
 ck('single and bulk forms show their own save feedback inside the active dialog',school.includes('id="rsSingleStatus"')&&school.includes('id="rsBulkStatus"')&&school.includes("msg('#rsSingleStatus'")&&school.includes("msg('#rsBulkStatus'"));
 ck('bulk grid remains keyboard/paste friendly',school.includes("gdBody.addEventListener('paste'")&&school.includes("e.key==='Enter'||e.key==='ArrowDown'"));
 ck('UI restores moved forms to their original positions after dialog close',ui.includes("document.createComment('ui-home')")&&ui.includes('ph.parentNode.insertBefore(n, ph)'));
-ck('release and app caches use v2.91.0',read('package.json').includes('2.91.0')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.91.0'")));
+ck('attendance places each student name on its own line and the status dropdown below',/attendance-student-name[\s\S]*attendance-student-controls[\s\S]*data-att=/.test(school)&&school.includes('class=\"attendance-student\"'));
+ck('certificate workflow requires choosing a grade before the student list is enabled',school.includes('id=\"certGrade\"')&&school.includes('id=\"certStudent\" disabled')&&school.includes('fillCertificateStudents'));
+ck('certificate issuance sends the selected grade and academic year',school.includes("grade:$('#certGrade').value")&&school.includes("academicYear:$('#certYear').value"));
+ck('academic-year fields automatically insert a hyphen after the first four digits',school.includes("digits.slice(0,4)+'-'+digits.slice(4)")&&school.includes('academic-year-input'));
+ck('certificate API validates that the selected student belongs to the selected grade and uses selected year',read('lib/extras.js').includes('student.grade!==requestedGrade')&&read('lib/extras.js').includes('===academicYear'));
+ck('release and app caches use v2.92.0',read('package.json').includes('2.92.0')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.92.0'")));
 for(const [n,ok] of checks)console.log((ok?'PASS ':'FAIL ')+n);
 console.log(`\n${checks.filter(x=>x[1]).length}/${checks.length} workflow UI checks passed.`);
 if(checks.some(x=>!x[1]))process.exitCode=1;

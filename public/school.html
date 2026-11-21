@@ -36,7 +36,7 @@ $('#nAsg').addEventListener('change',nFill);
 $('#noteForm').addEventListener('submit',async e=>{e.preventDefault();const a=TEACH.assignments[Number($('#nAsg').value)];try{const d=await api('/api/school-member/teacher/notes',{method:'POST',body:JSON.stringify({studentId:$('#nStudent').value,kind:$('#nKind').value,text:$('#nText').value,subject:a.subject})});$('#nStatus').textContent=d.queued?'سيُرسل عند عودة الإنترنت.':'أُرسلت الملاحظة.';$('#nText').value='';if(!d.queued)nLoad()}catch(err){$('#nStatus').textContent=err.message}});
 const _refreshT=refresh;refresh=async function(){await _refreshT.apply(this,arguments);const m=await api('/api/school-member/me').catch(()=>null);await teacherSetup().catch(()=>{});if(window.__buildRoleActionHub&&m?.member)window.__buildRoleActionHub(m.member.role==='teacher'?'teacher':'student')};
 </script><script>
-/* v2.91.0 — role-based action hub: each task opens as a focused workspace. */
+/* v2.92.0 — role-based action hub: each task opens as a focused workspace. */
 (function(){
  const $=s=>document.querySelector(s);
  let built=false, activeRole='student';
