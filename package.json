@@ -1,6 +1,6 @@
 {
   "name": "taallam-ma-alhaitham",
-  "version": "2.93.0",
+  "version": "2.93.1",
   "private": true,
   "description": "منصة تعليمية عربية مع متابعة تعليمية تفاعلية واختبارات تكاملية",
   "scripts": {
