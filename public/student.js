@@ -284,7 +284,7 @@
       ['c3', '📝', 'اختبرني', 'أسئلة وتصحيح فوري', () => openLearn('quiz')],
       ['c4', '🎮', 'ألعاب', 'حروف وأرقام وألوان', openGames],
       ['c5', '⭐', 'إنجازاتي', 'نجومي وشاراتي', openAchievements],
-      ['c6', '🏫', 'مدرستي', 'درجاتي وواجباتي (اربط بريدك)', null]
+      ['c6', '🏫', 'مدرستي', 'درجاتي وواجباتي', openSchoolGate]
     ];
     if (P.stage === 'kids') { const g = tiles.splice(3, 1)[0]; tiles.splice(1, 0, g); }
     const grid = $('#grid'); grid.replaceChildren();
@@ -294,6 +294,20 @@
     }
   }
 
+  // "my school / my grades": only for a student whose e-mail is linked to his name in the school list
+  async function openSchoolGate() {
+    let me = null; try { me = await api('/api/school-member/me'); } catch { /* offline */ }
+    if (me && me.authenticated) { location.href = me.member && me.member.role === 'teacher' ? '/school' : '/student/school'; return; }
+    openSheet('درجاتي ونتائجي', () => {
+      setBody(el('div', { class: 'center', style: 'flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center' },
+        el('div', { style: 'font-size:56px', text: '🔒' }),
+        el('h3', { text: 'يلزم تسجيل حسابك أولًا' }),
+        el('p', { text: 'لتشاهد درجاتك ونتائجك وواجباتك يجب أن يكون لك حساب في مدرستك: اختر اسمك من قائمة صفك واربط بريدك الإلكتروني، وبعد أن تعتمد المدرسة حسابك تظهر لك كل درجاتك.' }),
+        el('a', { class: 'big primary', href: '/student/school' }, el('span', { class: 'em', text: '🔗' }), el('div', {}, 'ربط حسابي بالمدرسة', el('small', { text: 'أو تسجيل الدخول إن كان لي حساب' }))),
+        el('p', { class: 'hint', text: 'ليس عندك بريد؟ لا مشكلة، تستطيع التعلّم والاختبار واللعب مجانًا دون حساب. لكن الدرجات لا تظهر إلا لمن سجّل حسابه.' }),
+        el('button', { class: 'btn alt', type: 'button', text: 'لاحقًا', onclick: back })));
+    });
+  }
   // ---------- onboarding / settings ----------
   function openSettings(first) { openSheet(first ? 'أهلًا بك!' : 'إعداداتي', () => settingsScreen(first)); }
   function settingsScreen(first) {
@@ -394,7 +408,7 @@
   async function getInteractives(bookId) { if (!INTER[bookId]) { try { INTER[bookId] = (await api('/api/learn/interactives?bookId=' + encodeURIComponent(bookId))).items || []; } catch { INTER[bookId] = []; } } return INTER[bookId]; }
   const loadedScripts = {};
   const loadScript = url => loadedScripts[url] || (loadedScripts[url] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = url; s.onload = res; s.onerror = () => { delete loadedScripts[url]; rej(new Error('تعذّر تحميل التجربة. تحقق من الاتصال.')); }; document.head.append(s); }));
-  const SIM_VER = '2.84.0';
+  const SIM_VER = '2.85.0';
   // opened from a book page: shows where it comes from, the experiment itself, and a way back to the exact page
   async function screenSim(item, book) {
     const sid = S.sid; setBody(loading('أجهّز التجربة…'));

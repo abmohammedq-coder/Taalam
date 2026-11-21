@@ -54,5 +54,20 @@ ck('guardian page shows the transcript and notes for each child', gua.includes('
   const hid = T.transcriptTable({ ...t, hidden: true, hiddenReason: 'محجوبة', rows: [{ subject: 'علوم', cells: { 'a|b|': { hidden: true } }, total: null, max: null, percent: null }] });
   ck('hidden transcript shows a blurred placeholder and the reason, never a real score', hid.includes('blur(6px)') && hid.includes('محجوبة') && !/18 \/ 20/.test(hid));
   ck('an empty transcript says so', T.transcriptTable({ ...t, rows: [] }).includes('لا توجد درجات')); }
+
+// ---- round 2: every school-admin section is a dialog; no mixed members tab; clear gate; teacher login ----
+const stuJs = pub('student.js'), teacherPage = pub('teacher.html');
+const dialogTabs = [...sadm.matchAll(/(\w+):\['[^']+','(?:md|lg)'\]/g)].map(m => m[1]);
+const navTabs = [...sadm.matchAll(/<button class="nav"[^>]*data-tab="([a-z]+)"/g)].map(m => m[1]);
+ck('school admin: the old mixed "students and teachers" tab is gone from the menu', !navTabs.includes('members') && navTabs.includes('roster') && navTabs.includes('teachers'));
+ck('school admin: every menu item opens a dialog (' + navTabs.length + ' sections)', navTabs.length >= 12 && navTabs.every(t => dialogTabs.includes(t)));
+ck('school admin: every dialog section exists in the page', dialogTabs.every(t => sIds.has('tab-' + t)));
+ck('school admin: the dashboard has tiles for the sections, and the "pending" card points to students / teachers', sadm.includes('id="overviewTiles"') && !sadm.includes('data-goto="members"') && sadm.includes('data-goto="teachers"'));
+ck('school admin: live refresh follows the open dialog', sadm.includes('if(window.__dialogTab)return window.__dialogTab'));
+ck('grade entry uses lists from the school (subject, term, exam type) and a numbered sheet with Enter navigation', /<select id="resSubject">/.test(sadm) && /<select id="resTerm">/.test(sadm) && /<select id="resExam">/.test(sadm) && sadm.includes('/api/school-admin/academic-options') && sadm.includes('${i+1}. ${esc(m.name)}') && !sadm.includes('list="resSubjects"'));
+ck('pending teachers can be approved or refused from the Teachers dialog', tui.includes("review: '") === false && tui.includes('decide(t, \'approve\')') && sadm.includes("review:'/api/school-admin/members/review'"));
+ck('dialog headings are not repeated inside the dialog', /\.ui-body>\.card>h2:first-child/.test(ui));
+ck('learn app: "my school" asks a signed-out student to link his account instead of dumping him on a login page', stuJs.includes('openSchoolGate') && stuJs.includes('يلزم تسجيل حسابك أولًا') && stuJs.includes("href: '/student/school'"));
+ck('/teacher page forwards school teachers to their school page', teacherPage.includes('if(d.redirect)') && teacherPage.includes('location.href=d.redirect'));
 let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
 console.log(`\n${checks.length - failed}/${checks.length} UI wiring checks passed.`); if (failed) process.exitCode = 1;

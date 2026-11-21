@@ -18,7 +18,7 @@
 .ui-x{border:0;background:#0000000d;border-radius:12px;min-width:44px;min-height:44px;font:inherit;font-size:18px;cursor:pointer;color:inherit}
 .ui-x:hover{background:#00000018}.ui-x:focus-visible{outline:3px solid #d6a85f}
 .ui-body{padding:14px 16px 20px;overflow:auto;-webkit-overflow-scrolling:touch;flex:1}
-.ui-body>.card{box-shadow:none;border:0;padding:0;margin:0}
+.ui-body>.card{box-shadow:none;border:0;padding:0;margin:0 0 14px}.ui-body>.card>h2:first-child,.ui-body>.card>h3.section-title{display:none}
 .ui-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:10px}
 .ui-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:start;padding:16px;border-radius:18px;border:2px solid #e3ebe2;background:#fff;color:inherit;cursor:pointer;font:inherit;min-height:112px;position:relative;transition:transform .08s,border-color .15s,box-shadow .15s}
 .ui-tile:hover{border-color:#2b7a5f;box-shadow:0 6px 18px #173f3622}.ui-tile:active{transform:scale(.98)}.ui-tile:focus-visible{outline:3px solid #d6a85f}

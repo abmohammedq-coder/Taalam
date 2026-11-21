@@ -26,14 +26,14 @@
     const el = h('div', {}, rows, h('button', { type: 'button', class: 'secondary', text: '➕ إضافة مادة أخرى', onclick: () => addRow('', []).querySelector('select').focus() }));
     return { el, get() { const out = []; rows.querySelectorAll('.asg-row').forEach(r => { const sv = r.querySelector('.asg-subject').value, subject = sv === OTHER ? r.querySelector('.asg-free').value.trim() : sv; if (!subject) return; r.querySelectorAll('input[type=checkbox]:checked').forEach(c => out.push({ grade: c.value, subject })); }); return out; } };
   }
-  function mount(host, { base }) {
+  function mount(host, { base, review }) {
     let data = { teachers: [], options: { grades: [], subjects: [] } }; const status = h('p', { class: 'status', role: 'status' }), list = h('div', {});
     const say = t => { status.textContent = t || ''; };
     async function load() { try { data = await call(base); render(); } catch (e) { say(e.message); } }
     function chips(t) { const g = new Map(); for (const a of t.assignments) { if (!g.has(a.subject)) g.set(a.subject, []); g.get(a.subject).push(a.grade); } return [...g].map(([s, gr]) => h('span', { class: 'pill', text: s + ' — ' + gr.join('، ') })); }
     function render() {
-      list.replaceChildren(...(data.teachers.length ? data.teachers.map(t => h('div', { class: 'item' }, h('div', { style: 'flex:1' }, h('b', { text: '👨‍🏫 ' + t.name }), ' ', h('span', { class: 'pill', text: t.active ? 'نشط' : 'معطّل' }), h('small', { dir: 'ltr', text: t.email }), h('div', { class: 'asg-chips' }, chips(t))),
-        h('div', { class: 'top-actions' }, h('button', { type: 'button', class: 'secondary', text: '✏️ المواد والصفوف', onclick: () => form(t) }), h('button', { type: 'button', class: 'secondary', text: '🔑 كلمة مرور جديدة', onclick: () => pw(t) }), h('button', { type: 'button', class: t.active ? 'danger' : 'secondary', text: t.active ? 'تعطيل' : 'تفعيل', onclick: () => toggle(t) })))) : [h('div', { class: 'empty', text: 'لا يوجد معلمون بعد. اضغط «إضافة معلم».' })]));
+      list.replaceChildren(...(data.teachers.length ? data.teachers.map(t => h('div', { class: 'item' }, h('div', { style: 'flex:1' }, h('b', { text: '👨‍🏫 ' + t.name }), ' ', h('span', { class: 'pill', text: t.status === 'pending' ? '⏳ بانتظار الاعتماد' : t.active ? 'نشط' : 'معطّل' }), h('small', { dir: 'ltr', text: t.email }), h('div', { class: 'asg-chips' }, chips(t))),
+        h('div', { class: 'top-actions' }, ...(t.status === 'pending' && review ? [h('button', { type: 'button', text: 'اعتماد', onclick: () => decide(t, 'approve') }), h('button', { type: 'button', class: 'danger', text: 'رفض', onclick: () => decide(t, 'reject') })] : []), h('button', { type: 'button', class: 'secondary', text: '✏️ المواد والصفوف', onclick: () => form(t) }), h('button', { type: 'button', class: 'secondary', text: '🔑 كلمة مرور جديدة', onclick: () => pw(t) }), h('button', { type: 'button', class: t.active ? 'danger' : 'secondary', text: t.active ? 'تعطيل' : 'تفعيل', onclick: () => toggle(t) })))) : [h('div', { class: 'empty', text: 'لا يوجد معلمون بعد. اضغط «إضافة معلم».' })]));
     }
     function form(t) {
       const ed = assignEditor(data.options, t ? t.assignments : []), f = h('form', {}, h('div', { class: 'grid' }, h('label', {}, 'اسم المعلم', h('input', { name: 'name', required: true, maxlength: '120', value: t ? t.name : '' })), t ? null : h('label', {}, 'البريد الإلكتروني (للدخول)', h('input', { name: 'email', type: 'email', required: true, maxlength: '254', dir: 'ltr' })), t ? null : h('label', {}, 'كلمة مرور مؤقتة (8 أحرف على الأقل)', h('input', { name: 'password', type: 'text', required: true, minlength: '8', maxlength: '128', dir: 'ltr', autocomplete: 'off' }))),
@@ -44,6 +44,7 @@
         try { const body = t ? { name: f.name.value, assignments } : { name: f.name.value, email: f.email.value, password: f.password.value, assignments }; const d = await call(base + (t ? '/' + encodeURIComponent(t.id) : ''), t ? 'PATCH' : 'POST', body); if (d.queued) { say('سيُحفظ عند عودة الإنترنت.'); dlg.close(); return; } dlg.close(); say(t ? 'تم حفظ التعديلات.' : 'أُضيف المعلم. أعطه بريده وكلمة المرور المؤقتة ليدخل.'); load(); } catch (err) { st.textContent = err.message; }
       };
     }
+    async function decide(t, action) { try { await call(review, 'POST', { id: t.id, action }); load(); } catch (e) { say(e.message); } }
     async function pw(t) { const v = prompt('كلمة المرور الجديدة للمعلم ' + t.name + ' (8 أحرف على الأقل). سيُسجَّل خروجه من كل الأجهزة:'); if (!v) return; try { await call(base + '/' + encodeURIComponent(t.id), 'PATCH', { newPassword: v }); say('تم تغيير كلمة المرور.'); } catch (e) { say(e.message); } }
     async function toggle(t) { if (t.active && !confirm('تعطيل حساب المعلم ' + t.name + '؟ لن يستطيع الدخول.')) return; try { await call(base + '/' + encodeURIComponent(t.id), 'PATCH', { active: !t.active }); load(); } catch (e) { say(e.message); } }
     host.replaceChildren(h('div', { class: 'ui-bar' }, h('button', { type: 'button', text: '➕ إضافة معلم', onclick: () => form(null) })), status, list); load();

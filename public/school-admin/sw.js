@@ -1,4 +1,4 @@
-const VERSION = '2.84.0';
+const VERSION = '2.85.0';
 const PREFIX = 'taallam-school-admin-shell-';
 const CACHE_NAME = PREFIX + VERSION;
 const PAGES_CACHE = 'taallam-pages-v1'; // book page images the student already opened (kept for offline reading)
