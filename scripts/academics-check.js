@@ -60,6 +60,9 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const base = { grade: G1, subject: QURAN, examType: 'الاختبار الشهري', term: 'الجزء الأول', max: 20 };
     const g1 = await post(tc1, { ...base, rows: rowsG1 });
     ck('a teacher records grades for his own subject and grade', g1.status === 201 && g1.json.added === 3);
+    ck('duplicate assessment for the same student is rejected', (await post(tc1, { ...base, rows: [rowsG1[0]] })).status === 409);
+    const firstResult = (await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: tc1 })).json.results.find(r => r.studentId === rowsG1[0].studentId);
+    ck('teacher can edit an existing grade without creating a duplicate', (await request('PATCH', '/api/school-member/teacher/results/' + firstResult.id, { cookie: tc1, body: { score: 19, max: 20 } })).status === 200);
     ck('…but not for a subject that is not his', (await post(tc1, { ...base, subject: MATH, rows: rowsG1 })).status === 403);
     ck('…nor for a grade he does not teach this subject in', (await post(tc1, { ...base, grade: G2, subject: QURAN, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 10 }] })).status === 403);
     ck('…nor a score above the maximum, nor a student of another grade', (await post(tc1, { ...base, rows: [{ studentId: rowsG1[0].studentId, score: 99 }] })).status === 400 && (await post(tc1, { ...base, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 5 }] })).status === 403);
@@ -78,9 +81,12 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     // ---------- pivot report, schedule, attendance and immutable certificate snapshot ----------
     const pivot = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: sac });
     ck('school report returns one row per student and dynamic assessment columns', pivot.status === 200 && pivot.json.rows.length === 3 && pivot.json.columns.length >= 2 && pivot.json.rows.every(x => x.studentId));
+    const allSubjects = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent('كل المواد'), { cookie: sac });
+    ck('school report supports all subjects with subject-labelled columns and one row per student', allSubjects.status === 200 && allSubjects.json.subject === 'كل المواد' && allSubjects.json.rows.length === 3 && allSubjects.json.columns.some(c => c.subject === QURAN) && allSubjects.json.columns.some(c => c.subject === MATH));
     ck('school report computes competition ranking and international-style grade bands', pivot.json.rows.every(x => Number.isInteger(x.rank) && ['A','B','C','D','E','F'].includes(x.gradeLetter) && x.gradeLabel));
-    const defaulted = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'الجزء الأول', score: 12 } });
-    ck('monthly assessment defaults to 20 points when maximum is omitted', defaulted.status === 201 && (await request('GET', '/api/school-admin/results?studentId=' + R('أحمد علي محمد').id, { cookie: sac })).json.results.some(x => x.examType === 'الاختبار الشهري' && x.score === 12 && x.max === 20));
+    const defaulted = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 12 } });
+    ck('monthly assessment defaults to 20 points when maximum is omitted', defaulted.status === 201 && (await request('GET', '/api/school-admin/results?studentId=' + R('ليلى حسن ناصر').id, { cookie: sac })).json.results.some(x => x.examType === 'الاختبار الشهري' && x.score === 12 && x.max === 20));
+    ck('school admin cannot accidentally record the same assessment twice', (await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 13, max: 20 } })).status === 409);
     const lesson = { day: 'الأحد', period: 1, grade: G1, section: 'أ', subject: QURAN, teacherId: t1.json.teacher.id, start: '07:30', end: '08:15', room: '1' };
     const sch = await request('PUT', '/api/school-admin/schedule', { cookie: sac, body: { lessons: [lesson] } });
     ck('school admin saves a timetable lesson with an assigned teacher', sch.status === 200 && sch.json.lessons.length === 1);

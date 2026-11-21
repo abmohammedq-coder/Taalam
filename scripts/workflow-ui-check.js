@@ -1,4 +1,4 @@
-// v2.92.0: checks for compact attendance rows, grade-first certificates, and academic-year entry.
+// v2.93.0: checks for compact attendance rows, grade-first certificates, and academic-year entry.
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -7,11 +7,11 @@ const checks=[];const ck=(name,ok)=>checks.push([name,!!ok]);
 ck('book upload offers first term, second term, and both terms',/name="term"[\s\S]*?value="الترم الأول"[\s\S]*?value="الترم الثاني"[\s\S]*?value="الترمين معًا"/.test(admin));
 ck('book upload explains that both terms are in one combined book',admin.includes('الجزء الأول والثاني في كتاب واحد'));
 ck('selected book term is passed unchanged to the upload API',admin.includes("term:f.get('term')"));
-ck('student add landing panel contains only the two explicit choices',school.includes('id="rsSingleOpen"')&&school.includes('id="rsBulkOpen"')&&!school.slice(school.indexOf('id="rsAddCard"'),school.indexOf('id="rsSingleCard"')).includes('<form id="rosterForm"'));
-ck('single-student form is separately hidden until requested',/class="card hidden" id="rsSingleCard"[\s\S]*?<form id="rosterForm"/.test(school));
-ck('bulk student sheet is separately hidden until requested',/class="card hidden" id="rsBulkCard"[\s\S]*?id="gdBody"/.test(school));
-ck('each add choice opens only its own modal form',school.includes("UI.openSection('#rsSingleCard'")&&school.includes("UI.openSection('#rsBulkCard'"));
-ck('single and bulk forms show their own save feedback inside the active dialog',school.includes('id="rsSingleStatus"')&&school.includes('id="rsBulkStatus"')&&school.includes("msg('#rsSingleStatus'")&&school.includes("msg('#rsBulkStatus'"));
+ck('student add landing panel has one unified add-student action',school.includes('id="rsBulkOpen"')&&school.includes('إضافة طالب أو عدة طلاب')&&!school.includes('id="rsSingleOpen"'));
+ck('the redundant single-student form and handler are removed',!school.includes('id="rsSingleCard"')&&!school.includes('id="rosterForm"')&&!school.includes('rsSingleStatus'));
+ck('the unified student sheet supports adding one or many students',/class="card hidden" id="rsBulkCard"[\s\S]*?id="gdBody"/.test(school)&&school.includes('id="gdSave"'));
+ck('the unified add action opens the keyboard-friendly student sheet',school.includes("UI.openSection('#rsBulkCard'"));
+ck('the unified student sheet shows its own save feedback',school.includes('id="rsBulkStatus"')&&school.includes("msg('#rsBulkStatus'"));
 ck('bulk grid remains keyboard/paste friendly',school.includes("gdBody.addEventListener('paste'")&&school.includes("e.key==='Enter'||e.key==='ArrowDown'"));
 ck('UI restores moved forms to their original positions after dialog close',ui.includes("document.createComment('ui-home')")&&ui.includes('ph.parentNode.insertBefore(n, ph)'));
 ck('attendance places each student name on its own line and the status dropdown below',/attendance-student-name[\s\S]*attendance-student-controls[\s\S]*data-att=/.test(school)&&school.includes('class=\"attendance-student\"'));
@@ -19,7 +19,11 @@ ck('certificate workflow requires choosing a grade before the student list is en
 ck('certificate issuance sends the selected grade and academic year',school.includes("grade:$('#certGrade').value")&&school.includes("academicYear:$('#certYear').value"));
 ck('academic-year fields automatically insert a hyphen after the first four digits',school.includes("digits.slice(0,4)+'-'+digits.slice(4)")&&school.includes('academic-year-input'));
 ck('certificate API validates that the selected student belongs to the selected grade and uses selected year',read('lib/extras.js').includes('student.grade!==requestedGrade')&&read('lib/extras.js').includes('===academicYear'));
-ck('release and app caches use v2.92.0',read('package.json').includes('2.92.0')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.92.0'")));
+ck('results menu opens separate actions for entry, latest results, and grade report',school.includes("label:'➕ إدخال درجات'")&&school.includes("label:'🕘 آخر النتائج المسجلة'")&&school.includes("label:'📊 كشف درجات'")&&school.includes('id="resLatestCard"')&&school.includes('id="resReportCard"'));
+ck('grade report offers all subjects and prints a clean non-duplicated column set',school.includes("fillSelect('#reportSubject',['كل المواد',...o.subjects])")&&school.includes('<th>المعدل</th><th>التقدير</th>')&&!school.includes('<th>الوصف</th>'));
+ck('school result-card print template groups assessment rows by subject columns and prints two slips per A4 page',school.includes('id="printResultCards"')&&school.includes('طباعة النتيجة بالنموذج المدرسي')&&school.includes('const subjects=[...new Set(cols.map(c=>c.subject))]')&&school.includes('.slip:nth-of-type(2n){break-after:page}')&&school.includes('schoolLogo'));
+ck('birth date can be edited by keyboard and selected from the calendar',school.includes('data-c="birth" type="text" inputmode="numeric"')&&school.includes('data-date-picker type="date"')&&school.includes('normalizeBirthInput'));
+ck('release and app caches use v2.93.0',read('package.json').includes('2.93.0')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.93.0'")));
 for(const [n,ok] of checks)console.log((ok?'PASS ':'FAIL ')+n);
 console.log(`\n${checks.filter(x=>x[1]).length}/${checks.length} workflow UI checks passed.`);
 if(checks.some(x=>!x[1]))process.exitCode=1;

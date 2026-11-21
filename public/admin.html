@@ -115,7 +115,7 @@ if(window.LIVE)LIVE.on(()=>{if(me?.role||me?.authenticated)loadJobs()});
 /* ---------- interactive experiments: review and approval ---------- */
 const EXP_LABEL={needs_review:'بانتظار المراجعة',approved:'معتمدة',rejected:'مرفوضة',error:'فيها أخطاء'};
 let expTemplates=[],expLoaded=false,expPrev=null;
-async function ensureSim(){if(window.SIM)return;await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/templates.js?v=2.92.0';a.onload=res;a.onerror=rej;document.head.append(a)});await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/render.js?v=2.92.0';a.onload=res;a.onerror=rej;document.head.append(a)});}
+async function ensureSim(){if(window.SIM)return;await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/templates.js?v=2.93.0';a.onload=res;a.onerror=rej;document.head.append(a)});await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/render.js?v=2.93.0';a.onload=res;a.onerror=rej;document.head.append(a)});}
 async function loadExperiments(){try{
   await ensureSim();if(!expLoaded){expLoaded=true;$('#expTemplate').innerHTML='<option value="guided_inquiry">استكشاف حر مخصص (أخرى)</option>'+Object.values(SIMT.TEMPLATES).map(t=>`<option value="${t.id}">${escapeHtml(t.title)} (${escapeHtml(t.subject)})</option>`).join('')}
   const c=await api('/api/admin/content'),books=(c.books||[]).filter(b=>b.pdfUploaded&&b.fileName),sel=$('#expBook'),keep=sel.value;
@@ -172,4 +172,4 @@ async function refreshAll(){try{buildHubs();await refreshBooks();await refreshAd
 function activateTab(tab){document.querySelectorAll('.admin-panel').forEach(el=>el.classList.toggle('panel-hidden',!el.dataset.panel.split(' ').includes(tab)));document.querySelectorAll('[data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-current',on?'page':'false')});}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>activateTab(b.dataset.tab)));
 (async()=>{try{me=await api('/api/admin/me');if(me.authenticated){show(true);activateTab('overview');$('#rolePill').textContent=me.role==='superadmin'?'المدير الرئيسي':'مدير المنصة';msg('#whoami','تم تسجيل الدخول باسم '+me.email);$('#adminsCard').classList.toggle('hidden',me.role!=='superadmin');$('#schoolsCard').classList.toggle('hidden',me.role!=='superadmin');$('#settingsCard').classList.toggle('hidden',me.role!=='superadmin');$('#aboutCard').classList.toggle('hidden',me.role!=='superadmin');$('#backupCard').classList.toggle('hidden',me.role!=='superadmin');await refreshAll()}else show(false)}catch{show(false)}})();
-</script><script src="/install.js" defer></script></body></html>
+</script><script src="/install.js" defer></script><script src="/exit-confirm.js"></script></body></html>

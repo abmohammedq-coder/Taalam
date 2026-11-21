@@ -70,5 +70,7 @@ ck('pending teachers can be approved or refused from the Teachers dialog', tui.i
 ck('dialog headings are not repeated inside the dialog', /\.ui-body>\.card>h2:first-child/.test(ui));
 ck('learn app: "my school" asks a signed-out student to link his account instead of dumping him on a login page', stuJs.includes('openSchoolGate') && stuJs.includes('يلزم تسجيل حسابك أولًا') && stuJs.includes("href: '/student/school'"));
 ck('/teacher page forwards school teachers to their school page', teacherPage.includes('if(d.redirect)') && teacherPage.includes('location.href=d.redirect'));
+ck('student and teacher school portals redirect by the authenticated account role without sharing the wrong workspace', stu.includes("roleSession.member?.role==='teacher'") && stu.includes("location.replace('/school')") && sch.includes("roleSession.member?.role==='student'") && sch.includes("location.replace('/student/school')"));
+ck('Arabic exit confirmation is included in all major app portals and cached for offline launch', ['student.html','admin.html','school-admin.html','school.html','student-school.html','teacher.html','guardian.html'].every(f=>pub(f).includes('/exit-confirm.js')) && ['sw.js','admin/sw.js','school-admin/sw.js'].every(f=>pub(f).includes('/exit-confirm.js')));
 let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
 console.log(`\n${checks.length - failed}/${checks.length} UI wiring checks passed.`); if (failed) process.exitCode = 1;
