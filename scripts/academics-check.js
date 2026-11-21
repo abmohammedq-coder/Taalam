@@ -45,11 +45,12 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('school admin can reject a pending student request without requiring a roster selection', studentReq2.status === 201 && rejectLink.status === 200 && rejectLink.json.status === 'rejected' && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === pending2.id)?.status === 'rejected');
     const schoolUi = fs.readFileSync(path.join(root, 'public', 'school-admin.html'), 'utf8');
     ck('school request buttons parse the full request ID and action before sending the review request', schoolUi.includes("String(b.dataset.schoolRequest||'').split('|')") && !schoolUi.includes('const [id,action]=b.dataset.schoolRequest,'));
-    ck('school result card uses the Yemen-style bordered result summary and all-subject report', schoolUi.includes('class="final-summary"') && schoolUi.includes('اختر «كل المواد»') && schoolUi.includes('النتيجة النهائية للفصل الدراسي'));
+    ck('school result card uses the Yemen-style bordered result summary and all-subject report', schoolUi.includes('class="note"') && schoolUi.includes('اختر «كل المواد»') && schoolUi.includes('النتيجة النهائية للفصل الدراسي'));
 
     // ---------- teachers ----------
     const opts = (await request('GET', '/api/school-admin/academic-options', { cookie: sac })).json;
     ck('academic options: school grades, default subjects (Quran, math, behaviour…), exam types and terms', opts.grades.length === 2 && opts.subjects.includes(QURAN) && opts.subjects.includes('السلوك والمواظبة') && opts.terms.length === 2 && opts.examTypes.length >= 3);
+    ck('grade entry uses the exact semester and assessment labels from the school result model', opts.terms[0] === 'الفصل الأول' && opts.terms[1] === 'الفصل الثاني' && ['المحصلة الأولى','الفصل الأول','المحصلة الثانية','الفصل الثاني'].every(x => opts.examTypes.includes(x)));
     const asg1 = [{ grade: G1, subject: QURAN }, { grade: G2, subject: MATH }], asg2 = [{ grade: G1, subject: MATH }];
     ck('adding a teacher needs a session', (await request('POST', '/api/school-admin/teachers', { body: {} })).status === 401);
     const t1 = await request('POST', '/api/school-admin/teachers', { cookie: sac, body: { name: 'الأستاذ عبدالله', email: 'abd@example.invalid', password: 'Teacher-Password-1', assignments: asg1 } });
@@ -82,22 +83,26 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('…nor a score above the maximum, nor a student of another grade', (await post(tc1, { ...base, rows: [{ studentId: rowsG1[0].studentId, score: 99 }] })).status === 400 && (await post(tc1, { ...base, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 5 }] })).status === 403);
     await post(tc1, { ...base, examType: 'الاختبار النصفي', max: 40, rows: rowsG1.map(r => ({ ...r, score: r.score * 2 - 1 })) });
     await post(tc1, { ...base, term: 'الجزء الثاني', rows: rowsG1.map(r => ({ ...r, score: 10 })) });
+    const secondExam = await post(tc1, { ...base, term: 'الفصل الثاني', examType: 'الفصل الثاني', max: 30, rows: rowsG1.map(r => ({ ...r, score: 25 })) });
+    ck('teacher can record the second-semester exam with the canonical label', secondExam.status === 201);
     await post(tc2, { grade: G1, subject: MATH, examType: 'الاختبار الشهري', term: 'الجزء الأول', max: 50, rows: rowsG1.map(r => ({ ...r, score: 40 })) });
     ck('the other teacher records his own subject', (await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(MATH), { cookie: tc2 })).json.results.length === 3);
     const t1Math = await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(MATH), { cookie: tc1 });
     ck('a teacher cannot read the grades of another subject', t1Math.status === 403);
     const t1Quran = (await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: tc1 })).json.results;
-    ck('his list contains only his subject', t1Quran.length === 9 && t1Quran.every(r => r.studentName));
+    ck('his list contains only his subject', t1Quran.length === 12 && t1Quran.every(r => r.studentName));
     const mathId = (await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(MATH), { cookie: tc2 })).json.results[0].id;
     ck('a teacher cannot delete a grade of another subject', (await request('DELETE', '/api/school-member/teacher/results/' + mathId, { cookie: tc1 })).status === 403);
     const own = t1Quran.find(r => r.studentId === R('عمر يوسف حسن').id).id; ck('a teacher can delete his own grade', (await request('DELETE', '/api/school-member/teacher/results/' + own, { cookie: tc1 })).status === 200);
-    ck('the school admin sees every subject', (await request('GET', '/api/school-admin/results', { cookie: sac })).json.results.length === 8 + 3);
+    ck('the school admin sees every subject', (await request('GET', '/api/school-admin/results', { cookie: sac })).json.results.length === 8 + 3 + 3);
     // ---------- pivot report, schedule, attendance and immutable certificate snapshot ----------
     const pivot = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: sac });
     ck('school report returns one row per student and dynamic assessment columns', pivot.status === 200 && pivot.json.rows.length === 3 && pivot.json.columns.length >= 2 && pivot.json.rows.every(x => x.studentId));
     const allSubjects = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent('كل المواد'), { cookie: sac });
-    ck('school report supports all subjects with subject-labelled columns and one row per student', allSubjects.status === 200 && allSubjects.json.subject === 'كل المواد' && allSubjects.json.rows.length === 3 && allSubjects.json.columns.some(c => c.subject === QURAN) && allSubjects.json.columns.some(c => c.subject === MATH));
+    ck('school report supports all subjects with subject-labelled columns and one row per student', allSubjects.status === 200 && allSubjects.json.subject === 'كل المواد' && allSubjects.json.rows.length === 3 && allSubjects.json.columns.some(c => c.subject === 'القرآن') && allSubjects.json.columns.some(c => c.subject === MATH));
     ck('school report computes competition ranking and international-style grade bands', pivot.json.rows.every(x => Number.isInteger(x.rank) && ['A','B','C','D','E','F'].includes(x.gradeLetter) && x.gradeLabel));
+    const firstTermReport = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent('كل المواد') + '&term=' + encodeURIComponent('الفصل الأول'), { cookie: sac });
+    ck('first-semester report normalizes legacy labels to المحصلة الأولى and الفصل الأول', firstTermReport.status === 200 && firstTermReport.json.columns.some(c => c.examType === 'المحصلة الأولى') && firstTermReport.json.columns.some(c => c.examType === 'الفصل الأول') && firstTermReport.json.subjects.includes('القرآن'));
     const defaulted = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 12 } });
     ck('monthly assessment defaults to 20 points when maximum is omitted', defaulted.status === 201 && (await request('GET', '/api/school-admin/results?studentId=' + R('ليلى حسن ناصر').id, { cookie: sac })).json.results.some(x => x.examType === 'الاختبار الشهري' && x.score === 12 && x.max === 20));
     ck('school admin cannot accidentally record the same assessment twice', (await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 13, max: 20 } })).status === 409);
@@ -119,7 +124,10 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('certificate snapshot uses the explicitly selected academic year and grade', cert.json.certificate.academicYear === '2026-2027' && cert.json.certificate.grade === G1);
     ck('certificate API rejects a student outside the selected grade', (await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, grade: G2, academicYear: '2026-2027', kind: 'first_term' } })).status === 400);
     ck('certificate includes class rank, grade letter, descriptive grade and separate signature/seal placeholders', cert.json.certificate.rank >= 1 && cert.json.certificate.rankOutOf >= 1 && ['A','B','C','D','E','F'].includes(cert.json.certificate.gradeLetter) && !!cert.json.certificate.gradeLabel && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministryOfficial') && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministrySeal') && cert.json.certificate.template === 'yemen-school-report-v3');
-    ck('school certificate archive is private to the school admin', (await request('GET', '/api/school-admin/certificates', { cookie: sac })).json.certificates.length === 1 && (await request('GET', '/api/school-admin/certificates')).status === 401);
+    const annual = await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, grade: G1, academicYear: '2026-2027', kind: 'annual' } });
+    const quranAnnual = annual.json?.certificate?.subjects?.find(x => x.subject === 'القرآن');
+    ck('annual certificate snapshot keeps first and second semester components separate', annual.status === 201 && quranAnnual?.firstMonthly?.score === 19 && quranAnnual?.firstExam?.score > 0 && quranAnnual?.secondMonthly?.score === 10 && quranAnnual?.secondExam?.score === 25 && quranAnnual?.annualTotal?.max === (quranAnnual.firstMonthly.max + quranAnnual.firstExam.max + quranAnnual.secondMonthly.max + quranAnnual.secondExam.max));
+    ck('school certificate archive is private to the school admin', (await request('GET', '/api/school-admin/certificates', { cookie: sac })).json.certificates.length === 2 && (await request('GET', '/api/school-admin/certificates')).status === 401);
 
     // ---------- student transcript ----------
     const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'أحمد علي محمد', grade: G1, section: 'أ', email: 'ahmad@example.invalid', password: 'Student-Password-1' } });
@@ -158,9 +166,9 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const tr = (await request('GET', '/api/school-member/transcript', { cookie: stc })).json;
     ck('transcript lists the subjects that have grades', reg.status === 201 && tr.subjects.length === 2 && tr.rows.length === 2);
     if (process.env.TRACE) console.log(JSON.stringify(tr.columns.map(c => c.label)));
-    ck('columns exist only for exams that were taken, ordered part 1 (monthly, midterm) then part 2', tr.columns.map(c => c.label).join('|') === 'الجزء الأول — الاختبار الشهري|الجزء الأول — الاختبار النصفي|الجزء الثاني — الاختبار الشهري');
-    const q = tr.rows.find(r => r.subject === QURAN), m = tr.rows.find(r => r.subject === MATH);
-    ck('cells hold the score and maximum; a subject without that exam has an empty cell', Object.keys(q.cells).length >= 2 && Object.keys(m.cells).length === 1 && m.cells['الجزء الأول|الاختبار الشهري|'].score === 40);
+    ck('columns exist only for exams that were taken, ordered part 1 (monthly, midterm) then part 2', tr.columns.map(c => c.label).join('|') === 'الفصل الأول — المحصلة الأولى|الفصل الأول — الفصل الأول|الفصل الثاني — المحصلة الثانية|الفصل الثاني — الفصل الثاني');
+    const q = tr.rows.find(r => r.subject === 'القرآن'), m = tr.rows.find(r => r.subject === MATH);
+    ck('cells hold the score and maximum; a subject without that exam has an empty cell', Object.keys(q.cells).length >= 2 && Object.keys(m.cells).length === 1 && m.cells['الفصل الأول|المحصلة الأولى|'].score === 40);
     ck('totals and percentage are computed from the cells that exist', m.total === 40 && m.max === 50 && m.percent === 80);
     const one = (await request('GET', '/api/school-member/transcript?subject=' + encodeURIComponent(MATH), { cookie: stc })).json;
     ck('filtering by subject shows only that subject (and only its columns)', one.rows.length === 1 && one.columns.length === 1 && one.subjects.length === 2);
