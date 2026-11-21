@@ -17,7 +17,18 @@ function startMockAI() {
   const seen = []; let speechCalls = 0, geminiCalls = 0;
   const srv = http.createServer((req, res) => {
     let b = ''; req.on('data', d => b += d); req.on('end', () => {
-      if (req.url.includes(':generateContent')) { geminiCalls++; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: Buffer.alloc(4800, 3).toString('base64') } }] } }] })); }
+      if (req.url.includes(':generateContent')) {
+        geminiCalls++; res.setHeader('Content-Type', 'application/json');
+        const isNew = req.url.includes('gemini-3.8-flash-lite-tts');
+        let audio = Buffer.alloc(4800, 3), mimeType = 'audio/L16;codec=pcm;rate=24000';
+        if (isNew) {
+          const wav = Buffer.alloc(44 + audio.length); wav.write('RIFF', 0); wav.writeUInt32LE(36 + audio.length, 4);
+          wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+          wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+          wav.write('data', 36); wav.writeUInt32LE(audio.length, 40); audio.copy(wav, 44); audio = wav; mimeType = 'audio/wav';
+        }
+        return res.end(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType, data: audio.toString('base64') } }] } }] }));
+      }
       if (req.url.endsWith('/audio/speech')) { speechCalls++; res.setHeader('Content-Type', 'audio/mpeg'); return res.end(Buffer.alloc(2048, 7)); }
       const body = JSON.parse(b || '{}');
       if (body.model === 'bad-model') { res.statusCode = 404; res.setHeader('Content-Type', 'application/json'); return res.end('{"error":{"message":"model not found"}}'); } const user = body.messages.map(m => m.content).join('\n'); seen.push(user);
@@ -83,8 +94,12 @@ async function startServer(extraEnv) {
     checks.push(['a wrong AI_MODEL is explained in plain Arabic (and the book text is still shown)', tbad.status === 200 && tbad.json.notice.includes('AI_MODEL') && tbad.json.slides.length > 0]);
     gem = await startServer({ AI_API_KEY: 'gem-key', AI_BASE_URL: 'http://127.0.0.1:' + mock.port + '/v1beta/openai/', TTS_BASE_URL: 'http://127.0.0.1:' + mock.port + '/v1beta', TTS_PROVIDER: 'gemini' });
     const g1 = await request(gem.port, '/api/learn/speak', { method: 'POST', body: { text: 'مرحبًا بك يا صديقي' } });
-    checks.push(['Gemini voice: raw PCM is wrapped as a playable WAV (RIFF, 24 kHz, 16-bit mono)', g1.status === 200 && g1.body.startsWith('RIFF') && mock.gemini() === 1]);
+    checks.push(['Gemini 3.8 voice: a provider WAV is returned without a duplicate WAV header', g1.status === 200 && g1.body.startsWith('RIFF') && g1.body.slice(8, 12) === 'WAVE' && mock.gemini() === 1]);
     await request(gem.port, '/api/learn/speak', { method: 'POST', body: { text: 'مرحبًا بك يا صديقي' } }); checks.push(['Gemini voice is cached after the first call', mock.gemini() === 1]);
+    const gemOld = await startServer({ AI_API_KEY: 'gem-key', AI_BASE_URL: 'http://127.0.0.1:' + mock.port + '/v1beta/openai/', TTS_BASE_URL: 'http://127.0.0.1:' + mock.port + '/v1beta', TTS_PROVIDER: 'gemini', TTS_MODEL: 'gemini-2.5-flash-preview-tts' });
+    const go = await request(gemOld.port, '/api/learn/speak', { method: 'POST', body: { text: 'اختبار الصوت القديم' } });
+    checks.push(['Gemini 2.5 raw PCM remains wrapped as a valid WAV', go.status === 200 && go.body.startsWith('RIFF') && go.body.slice(8, 12) === 'WAVE']);
+    gemOld.child.kill();
     noAI = await startServer({});
     const spn = await request(noAI.port, '/api/learn/speak', { method: 'POST', body: { text: 'مرحبا' } }); checks.push(['cloud voice is cleanly unavailable without a key', spn.status === 503 && (await request(noAI.port, '/api/learn/status')).json.tts === false]);
     const f1 = await request(noAI.port, '/api/learn/teach', { method: 'POST', body: { bookId: 'book1', sectionId: 'l2', mode: 'explain' } });

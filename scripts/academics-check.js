@@ -75,12 +75,54 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('a teacher cannot delete a grade of another subject', (await request('DELETE', '/api/school-member/teacher/results/' + mathId, { cookie: tc1 })).status === 403);
     const own = t1Quran.find(r => r.studentId === R('عمر يوسف حسن').id).id; ck('a teacher can delete his own grade', (await request('DELETE', '/api/school-member/teacher/results/' + own, { cookie: tc1 })).status === 200);
     ck('the school admin sees every subject', (await request('GET', '/api/school-admin/results', { cookie: sac })).json.results.length === 8 + 3);
+    // ---------- pivot report, schedule, attendance and immutable certificate snapshot ----------
+    const pivot = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: sac });
+    ck('school report returns one row per student and dynamic assessment columns', pivot.status === 200 && pivot.json.rows.length === 3 && pivot.json.columns.length >= 2 && pivot.json.rows.every(x => x.studentId));
+    ck('school report computes competition ranking and international-style grade bands', pivot.json.rows.every(x => Number.isInteger(x.rank) && ['A','B','C','D','E','F'].includes(x.gradeLetter) && x.gradeLabel));
+    const defaulted = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'الجزء الأول', score: 12 } });
+    ck('monthly assessment defaults to 20 points when maximum is omitted', defaulted.status === 201 && (await request('GET', '/api/school-admin/results?studentId=' + R('أحمد علي محمد').id, { cookie: sac })).json.results.some(x => x.examType === 'الاختبار الشهري' && x.score === 12 && x.max === 20));
+    const lesson = { day: 'الأحد', period: 1, grade: G1, section: 'أ', subject: QURAN, teacherId: t1.json.teacher.id, start: '07:30', end: '08:15', room: '1' };
+    const sch = await request('PUT', '/api/school-admin/schedule', { cookie: sac, body: { lessons: [lesson] } });
+    ck('school admin saves a timetable lesson with an assigned teacher', sch.status === 200 && sch.json.lessons.length === 1);
+    ck('timetable rejects a teacher/class collision in the same period', (await request('PUT', '/api/school-admin/schedule', { cookie: sac, body: { lessons: [lesson, { ...lesson, section: 'ب' }] } })).status === 409);
+    ck('teacher sees only their own timetable', (await request('GET', '/api/school-member/schedule', { cookie: tc1 })).json.lessons.length === 1 && (await request('GET', '/api/school-member/schedule', { cookie: tc2 })).json.lessons.length === 0);
+    const att = await request('POST', '/api/school-admin/attendance', { cookie: sac, body: { date: '2026-11-20', grade: G1, section: 'أ', rows: [{ studentId: R('أحمد علي محمد').id, status: 'present' }, { studentId: R('سارة خالد أحمد').id, status: 'absent' }] } });
+    const attRead = await request('GET', '/api/school-admin/attendance?date=2026-11-20&grade=' + encodeURIComponent(G1), { cookie: sac });
+    ck('attendance records save and return a daily summary', att.status === 201 && att.json.saved === 2 && attRead.json.summary.present === 1 && attRead.json.summary.absent === 1);
+    ck('attendance rejects unknown students and anonymous access', (await request('POST', '/api/school-admin/attendance', { cookie: sac, body: { date: '2026-11-20', grade: G1, rows: [{ studentId: 'not-a-student', status: 'absent' }] } })).status === 400 && (await request('GET', '/api/school-admin/attendance')).status === 401);
+    const cert = await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, kind: 'first_term' } });
+    ck('certificate issuance stores a historical snapshot with term results', cert.status === 201 && cert.json.certificate.snapshot === true && cert.json.certificate.subjects.length >= 1 && cert.json.certificate.kind === 'first_term');
+    ck('certificate includes class rank, grade letter, descriptive grade and separate signature/seal placeholders', cert.json.certificate.rank >= 1 && cert.json.certificate.rankOutOf >= 1 && ['A','B','C','D','E','F'].includes(cert.json.certificate.gradeLetter) && !!cert.json.certificate.gradeLabel && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministryOfficial') && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministrySeal') && cert.json.certificate.template === 'yemen-school-report-v3');
+    ck('school certificate archive is private to the school admin', (await request('GET', '/api/school-admin/certificates', { cookie: sac })).json.certificates.length === 1 && (await request('GET', '/api/school-admin/certificates')).status === 401);
 
     // ---------- student transcript ----------
     const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: R('أحمد علي محمد').id, email: 'ahmad@example.invalid', password: 'Student-Password-1' } });
     const mem = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.email === 'ahmad@example.invalid');
     await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: mem.id, action: 'approve' } });
     const stc = ck0(await request('POST', '/api/school-member/login', { body: { email: 'ahmad@example.invalid', password: 'Student-Password-1' } }));
+    // ---------- delegated attendance: submit by the class representative, approve only by school admin ----------
+    const delegateAssign=await request('PUT','/api/school-admin/attendance/delegates',{cookie:sac,body:{grade:G1,section:'أ',studentId:R('أحمد علي محمد').id}});
+    ck('only school administration can assign a representative with an approved student account',delegateAssign.status===200&&delegateAssign.json.delegate.email==='ahmad@example.invalid'&&(await request('PUT','/api/school-admin/attendance/delegates',{body:{grade:G1,section:'أ',studentId:R('أحمد علي محمد').id}})).status===401);
+    const delView=await request('GET','/api/school-member/attendance-delegate?date=2026-11-21',{cookie:stc});
+    ck('the appointed student representative sees the exact class roster and date',delView.status===200&&delView.json.students.length===3&&delView.json.grade===G1&&delView.json.section==='أ');
+    const delSubmit=await request('POST','/api/school-member/attendance-delegate',{cookie:stc,body:{date:'2026-11-21',rows:[{studentId:R('أحمد علي محمد').id,status:'present'},{studentId:R('سارة خالد أحمد').id,status:'late'},{studentId:R('عمر يوسف حسن').id,status:'absent'}]}});
+    const delBefore=await request('GET','/api/school-admin/attendance?date=2026-11-21&grade='+encodeURIComponent(G1)+'&section=%D8%A3',{cookie:sac});
+    ck('representative submits a complete attendance sheet as pending, not as approved attendance',delSubmit.status===201&&delBefore.json.records.length===0);
+    ck('the representative cannot approve their own submission and the admin queue receives it', (await request('POST','/api/school-admin/attendance/review',{cookie:stc,body:{submissionId:'x',action:'approve'}})).status===401&&(await request('GET','/api/school-admin/attendance/pending',{cookie:sac})).json.items.length===1);
+    const pendingId=(await request('GET','/api/school-admin/attendance/pending',{cookie:sac})).json.items[0].id;
+    const approved=await request('POST','/api/school-admin/attendance/review',{cookie:sac,body:{submissionId:pendingId,action:'approve'}});
+    const delAfter=await request('GET','/api/school-admin/attendance?date=2026-11-21&grade='+encodeURIComponent(G1)+'&section=%D8%A3',{cookie:sac});
+    ck('only school administration approval publishes the attendance records and records the approver',approved.status===200&&delAfter.json.records.length===3&&delAfter.json.records.every(x=>x.approvedBy==='head@example.invalid'));
+    const attPeriod=await request('GET','/api/school-admin/attendance?from=2026-11-20&to=2026-11-21&grade='+encodeURIComponent(G1)+'&section=%D8%A3',{cookie:sac});
+    ck('attendance supports a bounded date-range query for monthly and yearly reports',attPeriod.status===200&&attPeriod.json.records.length===5&&attPeriod.json.summary.present===2&&attPeriod.json.summary.absent===2&&attPeriod.json.summary.late===1);
+    ck('delegate endpoint is unavailable to a teacher and unassigned student', (await request('GET','/api/school-member/attendance-delegate',{cookie:tc1})).status===403);
+    await request('POST','/api/school-admin/attendance/delegates/clear',{cookie:sac,body:{grade:G1,section:'أ'}});
+    ck('school administration can revoke the representative assignment', (await request('GET','/api/school-member/attendance-delegate',{cookie:stc})).status===403);
+
+    const studentSchedule = await request('GET', '/api/school-member/schedule', { cookie: stc });
+    const studentAttendance = await request('GET', '/api/school-member/attendance?from=2026-11-20&to=2026-11-20', { cookie: stc });
+    ck('student sees only the timetable for their own class and section', studentSchedule.status === 200 && studentSchedule.json.lessons.length === 1 && studentSchedule.json.lessons[0].grade === G1 && studentSchedule.json.lessons[0].section === 'أ');
+    ck('student sees only their own attendance record; teachers cannot read student attendance', studentAttendance.status === 200 && studentAttendance.json.records.length === 1 && studentAttendance.json.records[0].status === 'present' && (await request('GET', '/api/school-member/attendance', { cookie: tc1 })).status === 403);
     const tr = (await request('GET', '/api/school-member/transcript', { cookie: stc })).json;
     ck('transcript lists the subjects that have grades', reg.status === 201 && tr.subjects.length === 2 && tr.rows.length === 2);
     if (process.env.TRACE) console.log(JSON.stringify(tr.columns.map(c => c.label)));

@@ -83,7 +83,19 @@
   // ---------- text to speech with word highlighting ----------
   // Two engines: the device voice (free, but missing/blocked on many phones) and a cloud voice served by the platform.
   const TTS = { ok: 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window, voice: null, arabic: 0, rate: .9, msPerChar: 80, cur: null, est: [], reading: false, audioEl: null, raf: 0, ctl: null, usingCloud: false, lastError: '' };
-  const CLOUD = { ok: false };
+  const CLOUD = { ok: false, checked: false, promise: null, error: '' };
+  // Check cloud TTS on demand as well as at startup. This avoids a race where a
+  // child taps Read before the asynchronous status request has completed.
+  function refreshCloudStatus(force = false) {
+    if (CLOUD.promise && !force) return CLOUD.promise;
+    if (CLOUD.checked && !CLOUD.error && !force) return Promise.resolve(CLOUD.ok);
+    CLOUD.promise = api('/api/learn/status').then(d => {
+      CLOUD.ok = Boolean(d.tts); CLOUD.checked = true; CLOUD.error = ''; return CLOUD.ok;
+    }).catch(e => {
+      CLOUD.checked = true; CLOUD.ok = false; CLOUD.error = e && e.message || 'network'; return false;
+    }).finally(() => { CLOUD.promise = null; });
+    return CLOUD.promise;
+  }
   const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
   const CAUDIO = new Map();
   function pickVoice() {
@@ -142,7 +154,7 @@
         mark(words, i); const d = words[i].textContent.length * TTS.msPerChar * (.9 / TTS.rate) + 70;
         TTS.est.push(setTimeout(() => estimate(i + 1), d));
       };
-      u.onstart = () => { started = true; t0 = performance.now(); clearTimeout(watch); if (words.length) TTS.est.push(setTimeout(() => { if (live() && !gotBoundary) estimate(0); }, 500)); };
+      u.onstart = () => { TTS.lastError = ''; started = true; t0 = performance.now(); clearTimeout(watch); if (words.length) TTS.est.push(setTimeout(() => { if (live() && !gotBoundary) estimate(0); }, 500)); };
       u.onboundary = e => {
         if (!live() || (e.name && e.name !== 'word') || !words.length) return;
         gotBoundary = true; clearEst(); let idx = 0; for (let i = 0; i < starts.length; i++) if (starts[i] <= e.charIndex) idx = i; mark(words, idx);
@@ -171,9 +183,15 @@
   // a clear Arabic explanation instead of an English error code
   function voiceHelp(why) {
     const w = String(why || '');
-    if (/synthesis|no-start|speak-failed|language|voice/.test(w) || !w) return 'الصوت العربي غير جاهز على هذا الجهاز. على أندرويد: الإعدادات ← الإدارة العامة ← اللغة ← تحويل النص إلى كلام ← محرك Google ← ثبّت بيانات الصوت العربي. ثم افتح ⚙️ إعداداتي ← «جرّب الصوت».';
-    if (/not-allowed/.test(w)) return 'المتصفح منع الصوت. اضغط أي زر في الصفحة ثم أعد المحاولة.';
-    return 'تعذّر تشغيل الصوت (' + w + '). افتح ⚙️ إعداداتي ← «جرّب الصوت» لمعرفة السبب.';
+    if (/cloud-status-unavailable/.test(w)) return 'تعذّر التحقق من خدمة الصوت بسبب الاتصال بالخادم. تأكد من الإنترنت ثم أعد المحاولة.';
+    if (/cloud-not-configured/.test(w)) return 'الصوت السحابي غير مفعّل في إعدادات المنصة. يلزم تفعيل خدمة الصوت على الخادم؛ لا تحتاج إلى تغيير إعدادات هاتفك.';
+    if (/http-401|http-403/.test(w)) return 'خدمة الصوت مفعّلة لكن مفتاحها غير صحيح أو لا يملك صلاحية توليد الصوت. راجع إعدادات الصوت في Railway.';
+    if (/http-404/.test(w)) return 'عنوان خدمة الصوت أو اسم نموذج الصوت غير صحيح. راجع إعدادات TTS في Railway.';
+    if (/http-429/.test(w)) return 'وصلت خدمة الصوت إلى حد الاستخدام المؤقت. حاول بعد قليل أو راجع حد الاستخدام اليومي.';
+    if (/http-502|http-503|network|Failed to fetch/.test(w)) return 'تعذّر الوصول إلى خدمة الصوت السحابي. تحقق من اتصال الإنترنت وإعدادات مزوّد الصوت في المنصة.';
+    if (/NotAllowedError|play-blocked|not-allowed/.test(w)) return 'منع المتصفح تشغيل الصوت تلقائيًا. اضغط زر «اقرأ» أو «جرّب الصوت» مرة أخرى.';
+    if (/synthesis|no-start|speak-failed|language|voice/.test(w) || !w) return 'تعذّر النطق بصوت الجهاز. أحاول استخدام صوت المنصة تلقائيًا؛ إذا استمرت المشكلة، افتح إعداداتي واضغط «جرّب الصوت».';
+    return 'تعذّر تشغيل الصوت (' + w + '). افتح ⚙️ إعداداتي ثم اضغط «جرّب الصوت» لمعرفة حالة الخدمة.';
   }
   async function cloudAudio(text, track) {
     if (CAUDIO.has(text)) return CAUDIO.get(text);
@@ -198,25 +216,36 @@
       };
       a.onended = () => { if (!live()) return; cancelAnimationFrame(TTS.raf); TTS.reading = false; mark(words, words.length); cb.onEnd && cb.onEnd(); };
       a.onerror = () => fail('audio-error');
-      const pr = a.play(); (pr && pr.then ? pr : Promise.resolve()).then(() => { if (live()) TTS.raf = requestAnimationFrame(loop); }).catch(e => fail(e && e.name || 'play-blocked'));
+      const pr = a.play(); (pr && pr.then ? pr : Promise.resolve()).then(() => { if (live()) { TTS.lastError = ''; TTS.raf = requestAnimationFrame(loop); } }).catch(e => fail(e && e.name || 'play-blocked'));
     }).catch(e => { if (e && e.name === 'AbortError') return; fail(e && e.message || 'network'); });
   }
   function speak(text, words = [], cb = {}) {
     stopSpeech();
     const mode = P.voiceMode || 'auto';
-    const toCloud = why => { if (CLOUD.ok) speakCloud(text, words, cb); else { TTS.lastError = TTS.lastError || why; cb.onFail && cb.onFail(why); } };
-    if (mode === 'cloud') return toCloud('cloud-off');
+    const toCloud = async why => {
+      // Never show an Android installation instruction until the server fallback
+      // has actually been checked. A fast first tap used to lose this race.
+      if (!CLOUD.checked || CLOUD.error) await refreshCloudStatus();
+      if (CLOUD.ok) { speakCloud(text, words, cb); return; }
+      const failure = CLOUD.error ? 'cloud-status-unavailable' : 'cloud-not-configured';
+      TTS.lastError = failure + (CLOUD.error ? ':' + CLOUD.error : '');
+      cb.onFail && cb.onFail(failure);
+    };
+    if (mode === 'cloud') { toCloud('cloud-off'); return; }
     if (TTS.ok && (mode === 'device' || !P.deviceBad)) {
-      return speakDevice(text, words, { onEnd: cb.onEnd, onFail: why => {
-        if (mode === 'auto' && CLOUD.ok) { P.deviceBad = true; save(); speakCloud(text, words, cb); } else cb.onFail && cb.onFail(why);
+      speakDevice(text, words, { onEnd: cb.onEnd, onFail: async why => {
+        if (mode === 'auto') { P.deviceBad = true; save(); await toCloud(why); }
+        else cb.onFail && cb.onFail(why);
       } });
+      return;
     }
     toCloud('no-tts');
   }
   const say = text => speak(text, [], {});
   function prefetchNext(text) { if (TTS.usingCloud && text) cloudAudio(text, false).catch(() => {}); }
   function voiceReport() {
-    return `النطق في الجهاز: ${TTS.ok ? 'مدعوم' : 'غير مدعوم'} · أصوات عربية مثبتة: ${AR(TTS.arabic)} · الصوت السحابي: ${CLOUD.ok ? 'متاح' : 'غير مفعّل'}${P.deviceBad ? ' · (تم تحويلك للصوت السحابي لأن صوت الجهاز فشل)' : ''}${TTS.lastError ? ' · آخر خطأ: ' + TTS.lastError : ''}`;
+    const cloud = !CLOUD.checked ? 'جارٍ التحقق…' : CLOUD.ok ? 'متاح' : 'غير مفعّل على الخادم';
+    return `النطق في الجهاز: ${TTS.ok ? 'مدعوم' : 'غير مدعوم'} · أصوات عربية مثبتة: ${AR(TTS.arabic)} · صوت المنصة: ${cloud}${P.deviceBad ? ' · سيُستخدم صوت المنصة تلقائيًا' : ''}${TTS.lastError ? ' · آخر خطأ: ' + TTS.lastError : ''}`;
   }
 
   // ---------- speech to text ----------
@@ -322,6 +351,7 @@
       const vmode = el('select', { class: 'input', 'aria-label': 'نوع الصوت' }, ...[['auto', 'تلقائي (الأفضل)'], ['cloud', 'صوت المنصة (يعمل على كل الأجهزة)'], ['device', 'صوت الجهاز']].map(([v, t]) => el('option', { value: v, text: t, selected: (P.voiceMode || 'auto') === v })));
       const swipe = el('select', { class: 'input', 'aria-label': 'اتجاه السحب' }, ...[['right', 'السحب لليمين = التالي'], ['left', 'السحب لليسار = التالي']].map(([v, t]) => el('option', { value: v, text: t, selected: (P.swipe || 'right') === v })));
       const diag = el('div', { class: 'notice', text: voiceReport() });
+      refreshCloudStatus().then(() => { if (diag.isConnected) diag.textContent = voiceReport(); });
       const testBtn = el('button', { class: 'btn alt', type: 'button', text: '🔊 جرّب الصوت', onclick: () => { prime(); P.voiceMode = vmode.value; if (vmode.value !== 'cloud') P.deviceBad = false; diag.textContent = 'أحاول التشغيل…'; speak('مرحبًا، أنا الهيثم. هل تسمعني؟', [], { onEnd: () => { diag.textContent = '✅ تم تشغيل الصوت. ' + voiceReport(); }, onFail: why => { diag.textContent = '❌ فشل التشغيل (' + why + '). ' + voiceReport(); } }); setTimeout(() => { if (/أحاول/.test(diag.textContent)) diag.textContent = voiceReport(); }, 9000); } });
       const dialect = el('select', { class: 'input', 'aria-label': 'لهجة الصوت' }, ...[['ar-SA', 'السعودية / اليمن'], ['ar-EG', 'مصر'], ['ar-AE', 'الإمارات'], ['ar-JO', 'الأردن'], ['ar-MA', 'المغرب']].map(([v, t]) => el('option', { value: v, text: t, selected: P.dialect === v })));
       const sound = el('input', { type: 'checkbox', checked: P.sound, style: 'width:26px;height:26px' });
@@ -408,10 +438,16 @@
   async function getInteractives(bookId) { if (!INTER[bookId]) { try { INTER[bookId] = (await api('/api/learn/interactives?bookId=' + encodeURIComponent(bookId))).items || []; } catch { INTER[bookId] = []; } } return INTER[bookId]; }
   const loadedScripts = {};
   const loadScript = url => loadedScripts[url] || (loadedScripts[url] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = url; s.onload = res; s.onerror = () => { delete loadedScripts[url]; rej(new Error('تعذّر تحميل التجربة. تحقق من الاتصال.')); }; document.head.append(s); }));
-  const SIM_VER = '2.85.0';
+  const SIM_VER = '2.89.0';
   // opened from a book page: shows where it comes from, the experiment itself, and a way back to the exact page
   async function screenSim(item, book) {
     const sid = S.sid; setBody(loading('أجهّز التجربة…'));
+    if(item.template==='guided_inquiry'){
+      const p=item.params||{},page=item.pages[0],read=(P.read&&P.read[book.id])||page;
+      const answerBoxes=(p.questions||[]).map((q,i)=>el('label',{class:'sim-ctl'},el('span',{text:(i+1)+'. '+q}),el('textarea',{class:'input',rows:3,'aria-label':q,placeholder:'اكتب ملاحظتك أو إجابتك هنا…'})));
+      const content=el('div',{class:'sim'},el('h3',{class:'sim-title',text:p.topic||item.title}),el('p',{class:'sim-intro',text:p.objective||''}),p.materials?.length?el('section',{},el('h4',{text:'🧰 الأدوات والمواد'}),el('ul',{},...p.materials.map(x=>el('li',{text:x})))):null,el('section',{},el('h4',{text:'🔎 خطوات الاستكشاف'}),el('ol',{},...(p.steps||[]).map(x=>el('li',{text:x})))),p.expectedObservation?el('p',{class:'hint',text:'👀 ما المتوقع ملاحظته: '+p.expectedObservation}):null,p.safetyNote?el('p',{class:'hint',text:'⚠️ تنبيه السلامة: '+p.safetyNote}):null,el('h4',{text:'🧠 فكّر وأجب'}),...answerBoxes,el('button',{class:'btn',type:'button',text:'أنهيت الاستكشاف',onclick:()=>{const filled=answerBoxes.filter((_,i)=>content.querySelectorAll('textarea')[i]?.value.trim()).length;content.querySelector('.sim-intro').textContent=filled?'أحسنت! سجّلت ملاحظاتك. ناقش استنتاجاتك مع معلمك.':'استكشف الخطوات ثم دوّن إجابة واحدة على الأقل.';}}));
+      const backBtn=el('button',{class:'btn',type:'button',text:'↩ العودة إلى صفحة '+AR(read)+' من الكتاب',onclick:back});setBody(el('div',{class:'sim-src'},el('b',{text:'📖 مصدر الاستكشاف'}),el('p',{text:'كتاب «'+(book.title||item.bookTitle)+'» — صفحة '+AR(page)}),item.excerpt?el('blockquote',{class:'sim-quote'},el('div',{text:item.excerpt})):null),content,el('div',{class:'ctrl'},backBtn));return;
+    }
     try { await loadScript('/sim/templates.js?v=' + SIM_VER); await loadScript('/sim/render.js?v=' + SIM_VER); } catch (e) { if (sid === S.sid) setBody(errorBox(e.message, () => screenSim(item, book))); return; }
     if (sid !== S.sid) return;
     const host = el('div', { class: 'sim-host' }), page = item.pages[0], read = (P.read && P.read[book.id]) || page;
@@ -739,7 +775,7 @@
   touchStreak(); document.body.classList.toggle('kids', P.stage === 'kids');
   buildHome(); renderHeader(); renderGreeting();
   if (!P.stage) openSettings(true);
-  api('/api/learn/status').then(d => { CLOUD.ok = Boolean(d.tts); }).catch(() => {});
+  refreshCloudStatus();
   api('/api/school-member/me').then(d => {
     if (d && d.authenticated && d.member && d.member.role === 'student' && d.member.grade) { S.school = d.school; if (!P.gradeManual && P.grade !== d.member.grade) { P.grade = d.member.grade; save(); } }
   }).catch(() => {});
