@@ -33,6 +33,20 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('an impossible or future birth date is dropped, not stored', R('سارة خالد أحمد').birthDate === '' && R('عمر يوسف حسن').birthDate === '');
     ck('birth date can be edited', (await request('PATCH', '/api/school-admin/roster/' + R('عمر يوسف حسن').id, { cookie: sac, body: { birthDate: '2018-12-31' } })).json.student.birthDate === '2018-12-31');
 
+    // ---------- student account linking requests: school-side match, approve and reject ----------
+    const studentReq1 = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'ليلى حسن ناصر', email: 'layla.link@example.invalid', password: 'Student-Link-Password-1', grade: G2, section: 'ب' } });
+    const pending1 = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.email === 'layla.link@example.invalid');
+    ck('student registration creates a pending request without exposing roster choices to the student', studentReq1.status === 201 && !!pending1 && pending1.status === 'pending' && !Object.prototype.hasOwnProperty.call(studentReq1.json || {}, 'students'));
+    const approveLink = await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: pending1?.id, action: 'approve', rosterId: R('ليلى حسن ناصر')?.id } });
+    ck('school admin matches and approves the pending student request against the existing roster record', approveLink.status === 200 && approveLink.json.status === 'approved' && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === pending1.id)?.rosterId === R('ليلى حسن ناصر').id);
+    const studentReq2 = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'ليلى حسن ناصر', email: 'layla.reject@example.invalid', password: 'Student-Reject-Password-1', grade: G2, section: 'ب' } });
+    const pending2 = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.email === 'layla.reject@example.invalid');
+    const rejectLink = await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: pending2?.id, action: 'reject' } });
+    ck('school admin can reject a pending student request without requiring a roster selection', studentReq2.status === 201 && rejectLink.status === 200 && rejectLink.json.status === 'rejected' && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === pending2.id)?.status === 'rejected');
+    const schoolUi = fs.readFileSync(path.join(root, 'public', 'school-admin.html'), 'utf8');
+    ck('school request buttons parse the full request ID and action before sending the review request', schoolUi.includes("String(b.dataset.schoolRequest||'').split('|')") && !schoolUi.includes('const [id,action]=b.dataset.schoolRequest,'));
+    ck('school result card uses the Yemen-style bordered result summary and all-subject report', schoolUi.includes('class="final-summary"') && schoolUi.includes('اختر «كل المواد»') && schoolUi.includes('النتيجة النهائية للفصل الدراسي'));
+
     // ---------- teachers ----------
     const opts = (await request('GET', '/api/school-admin/academic-options', { cookie: sac })).json;
     ck('academic options: school grades, default subjects (Quran, math, behaviour…), exam types and terms', opts.grades.length === 2 && opts.subjects.includes(QURAN) && opts.subjects.includes('السلوك والمواظبة') && opts.terms.length === 2 && opts.examTypes.length >= 3);
