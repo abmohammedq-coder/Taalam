@@ -5,7 +5,7 @@
   "description": "بوابة ولي الأمر",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/guardian",
+  "start_url": "/guardian/",
   "scope": "/guardian/",
   "display": "standalone",
   "background_color": "#f4f7f3",

@@ -32,7 +32,8 @@ function request(urlPath, options={}) {
     let ready=false;
     for(let i=0;i<60;i++){ if(child.exitCode!==null) throw new Error('Server exited before readiness. '+output); try { const r=await request('/api/teacher/status'); if(r.status===200){ready=true;break;} } catch {} await wait(200); }
     if(!ready) throw new Error('Server did not become ready. '+output);
-    for(const [label,url] of [['public homepage','/'],['student portal','/student'],['teacher portal','/teacher'],['guardian portal','/guardian'],['school admin portal','/school-admin'],['school portal','/school'],['admin portal','/admin']]) {
+    const schoolAlias=await request('/school'); checks.push(['the /school shortcut opens the school-admin app',schoolAlias.status===302&&schoolAlias.headers.location==='/school-admin/']);
+    for(const [label,url] of [['public homepage','/'],['student portal','/student/'],['teacher portal','/teacher/'],['guardian portal','/guardian/'],['school admin portal','/school-admin/'],['school portal','/teacher/school'],['admin portal','/admin/']]) {
       const r=await request(url); checks.push([label,r.status===200 && r.headers['content-type']?.includes('text/html')]);
     }
     for(const [label,url,needle] of [['admin scoped service worker','/admin/sw.js','taallam-admin-shell-'],['school admin scoped service worker','/school-admin/sw.js','taallam-school-admin-shell-'],['admin manifest','/manifest-admin.webmanifest','/admin/'],['school admin manifest','/manifest-school-admin.webmanifest','/school-admin/']]) { const r=await request(url); checks.push([label,r.status===200 && r.body.includes(needle)]); }

@@ -10,7 +10,7 @@ const checks = [
   ['device speech failure is remembered and auto-falls back', student.includes("P.deviceBad = true; save(); await toCloud(why)")],
   ['missing cloud voice gives server-configuration guidance, not Android settings', student.includes('الصوت السحابي غير مفعّل في إعدادات المنصة') && !student.includes('الإعدادات ← الإدارة العامة ← اللغة')],
   ['Gemini 3.8 WAV is not wrapped twice', server.includes("raw.subarray(0,4).toString('ascii')==='RIFF'") && server.includes("isWav?raw:pcmToWav(raw,rate)")],
-  ['all app service workers use the new cache version', sw.every(x => x.includes("VERSION = '2.93.2'"))]
+  ['all app service workers use the new cache version', sw.every(x => x.includes("VERSION = '2.93.4'"))]
 ];
 let failed = 0;
 for (const [name, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + name); if (!ok) failed++; }

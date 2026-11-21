@@ -115,7 +115,7 @@ if(window.LIVE)LIVE.on(()=>{if(me?.role||me?.authenticated)loadJobs()});
 /* ---------- interactive experiments: review and approval ---------- */
 const EXP_LABEL={needs_review:'بانتظار المراجعة',approved:'معتمدة',rejected:'مرفوضة',error:'فيها أخطاء'};
 let expTemplates=[],expLoaded=false,expPrev=null;
-async function ensureSim(){if(window.SIM)return;await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/templates.js?v=2.93.2';a.onload=res;a.onerror=rej;document.head.append(a)});await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/render.js?v=2.93.2';a.onload=res;a.onerror=rej;document.head.append(a)});}
+async function ensureSim(){if(window.SIM)return;await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/templates.js?v=2.93.4';a.onload=res;a.onerror=rej;document.head.append(a)});await new Promise((res,rej)=>{const a=document.createElement('script');a.src='/sim/render.js?v=2.93.4';a.onload=res;a.onerror=rej;document.head.append(a)});}
 async function loadExperiments(){try{
   await ensureSim();if(!expLoaded){expLoaded=true;$('#expTemplate').innerHTML='<option value="guided_inquiry">استكشاف حر مخصص (أخرى)</option>'+Object.values(SIMT.TEMPLATES).map(t=>`<option value="${t.id}">${escapeHtml(t.title)} (${escapeHtml(t.subject)})</option>`).join('')}
   const c=await api('/api/admin/content'),books=(c.books||[]).filter(b=>b.pdfUploaded&&b.fileName),sel=$('#expBook'),keep=sel.value;

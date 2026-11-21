@@ -47,7 +47,7 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const tc1 = ck0(await request('POST', '/api/school-member/login', { body: { email: 'abd@example.invalid', password: 'Teacher-Password-1' } })), tc2 = ck0(await request('POST', '/api/school-member/login', { body: { email: 'huda@example.invalid', password: 'Teacher-Password-2' } }));
     ck('teachers log in right away with the password the admin set', !!tc1 && !!tc2);
     const viaTeacherPage = await request('POST', '/api/teacher/login', { body: { email: 'abd@example.invalid', password: 'Teacher-Password-1' } });
-    ck('signing in from the /teacher page works for a school teacher (sent to the school page, already signed in)', viaTeacherPage.status === 200 && viaTeacherPage.json.redirect === '/school' && (await request('GET', '/api/school-member/me', { cookie: ck0(viaTeacherPage) })).json.member.role === 'teacher');
+    ck('signing in from the /teacher page works for a school teacher (sent to the school page, already signed in)', viaTeacherPage.status === 200 && viaTeacherPage.json.redirect === '/teacher/school' && (await request('GET', '/api/school-member/me', { cookie: ck0(viaTeacherPage) })).json.member.role === 'teacher');
     ck('…a wrong password is still refused there', (await request('POST', '/api/teacher/login', { body: { email: 'abd@example.invalid', password: 'wrong-password-1' } })).status === 401 && (await request('POST', '/api/teacher/login', { body: { email: 'nobody@example.invalid', password: 'wrong-password-1' } })).status === 401);
     const ov = (await request('GET', '/api/school-member/teacher/overview', { cookie: tc1 })).json;
     ck('a teacher sees his assignments and only the students of his grades', ov.assignments.length === 2 && ov.students.length === 4 && ov.students.every(s => [G1, G2].includes(s.grade)));
@@ -108,9 +108,15 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('school certificate archive is private to the school admin', (await request('GET', '/api/school-admin/certificates', { cookie: sac })).json.certificates.length === 1 && (await request('GET', '/api/school-admin/certificates')).status === 401);
 
     // ---------- student transcript ----------
-    const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: R('أحمد علي محمد').id, email: 'ahmad@example.invalid', password: 'Student-Password-1' } });
+    const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'أحمد علي محمد', grade: G1, section: 'أ', email: 'ahmad@example.invalid', password: 'Student-Password-1' } });
     const mem = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.email === 'ahmad@example.invalid');
-    await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: mem.id, action: 'approve' } });
+    ck('student registration asks for the name and grade without a roster identifier', reg.status === 201 && !mem.rosterId && mem.name === 'أحمد علي محمد' && mem.grade === G1);
+    ck('student registration cannot be submitted through the teacher join endpoint', (await request('POST', '/api/school-members/register', { body: { schoolId: sid, role: 'student', name: 'اسم آخر', grade: G1, email: 'other-student@example.invalid', password: 'Student-Password-1' } })).status === 403);
+    ck('public roster lookup no longer exposes any student names', (await request('GET', '/api/school-roster?schoolId=' + sid + '&grade=' + encodeURIComponent(G1))).status === 410);
+    ck('student account cannot be approved without the school-side roster match', (await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: mem.id, action: 'approve' } })).status === 404);
+    ck('school admin cannot link a different student name even within the same grade', (await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: mem.id, action: 'approve', rosterId: R('سارة خالد أحمد').id } })).status === 409);
+    const linkedApproval = await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: mem.id, action: 'approve', rosterId: R('أحمد علي محمد').id } });
+    ck('school admin matches the student request to the exact school roster record before approval', linkedApproval.status === 200 && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === mem.id).rosterId === R('أحمد علي محمد').id);
     const stc = ck0(await request('POST', '/api/school-member/login', { body: { email: 'ahmad@example.invalid', password: 'Student-Password-1' } }));
     // ---------- delegated attendance: submit by the class representative, approve only by school admin ----------
     const delegateAssign=await request('PUT','/api/school-admin/attendance/delegates',{cookie:sac,body:{grade:G1,section:'أ',studentId:R('أحمد علي محمد').id}});

@@ -1,9 +1,9 @@
-const VERSION = '2.93.2';
+const VERSION = '2.93.4';
 const PREFIX = 'taallam-shell-';
 const CACHE_NAME = PREFIX + VERSION;
 const PAGES_CACHE = 'taallam-pages-v1'; // book page images the student already opened (kept for offline reading)
-const HOME = '/';
-const SHELL = ["/", "/admin", "/school-admin", "/teacher", "/student", "/student/school", "/guardian", "/school", "/student.js", "/manifest-public.webmanifest", "/manifest-admin.webmanifest", "/manifest-school-admin.webmanifest", "/icons/taallam-learn-192.png", "/icons/taallam-learn-512.png", "/icons/taallam-admin-192.png", "/icons/taallam-admin-512.png", "/icons/taallam-school-192.png", "/icons/taallam-school-512.png"];
+const HOME = new URL('./', self.registration.scope).pathname;
+const SHELL = ["/", "/admin/", "/school-admin/", "/teacher/", "/student/", "/student/school", "/guardian/", "/school", "/student.js", "/manifest-public.webmanifest", "/manifest-admin.webmanifest", "/manifest-school-admin.webmanifest", "/manifest-student.webmanifest", "/manifest-teacher.webmanifest", "/manifest-guardian.webmanifest", "/teacher/", "/teacher/school", "/student/", "/icons/taallam-learn-192.png", "/icons/taallam-learn-512.png", "/icons/taallam-admin-192.png", "/icons/taallam-admin-512.png", "/icons/taallam-school-192.png", "/icons/taallam-school-512.png"];
 const COMMON = ['/install.js', '/offline.js', '/live.js', '/tools.js', '/ui.js', '/teachers-ui.js', '/exit-confirm.js', '/platform.js', '/student.css'];
 // Each file is cached on its own: one missing file must never stop the others from being cached.
 self.addEventListener('install', event => {

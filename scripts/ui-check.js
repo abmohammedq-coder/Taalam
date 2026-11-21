@@ -5,6 +5,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const root = path.resolve(__dirname, '..'), pub = f => fs.readFileSync(path.join(root, 'public', f), 'utf8');
 const checks = []; const ck = (l, ok) => checks.push([l, !!ok]);
+const readFileIfExists = f => fs.existsSync(f) ? fs.readFileSync(f,'utf8') : '';
 const admin = pub('admin.html'), sadm = pub('school-admin.html'), ui = pub('ui.js');
 const ids = html => new Set([...html.matchAll(/id=\\?"([A-Za-z0-9_-]+)/g)].map(m => m[1]));
 const aIds = ids(admin), sIds = ids(sadm);
@@ -38,7 +39,7 @@ ck('school admin: every direct ID selector points to an existing element (no sta
 // ---- teachers, grid, transcripts ----
 const sch = pub('school.html'), stu = pub('student-school.html'), gua = pub('guardian.html'), tui = pub('teachers-ui.js'), tools = pub('tools.js');
 ck('teachers-ui.js parses and is cached by every service worker', (() => { try { new vm.Script(tui); return true; } catch { return false; } })() && ['sw.js', 'admin/sw.js', 'school-admin/sw.js'].every(f => pub(f).includes("'/teachers-ui.js'")));
-ck('school admin has a Teachers tab that mounts the manager', sadm.includes('data-tab="teachers"') && sadm.includes('id="tab-teachers"') && sadm.includes("base:'/api/school-admin/teachers'") && sadm.includes('<script src="/teachers-ui.js"></script>'));
+ck('school admin has a Teachers dashboard tile that mounts the manager in its dialog', sadm.includes("teachers:['👨‍🏫 المعلمون','lg']") && sadm.includes('id="tab-teachers"') && sadm.includes("base:'/api/school-admin/teachers'") && sadm.includes('<script src="/teachers-ui.js"></script>'));
 ck('the platform owner manages a school\'s teachers from the school editor', admin.includes('id="esTeachers"') && admin.includes("'/api/admin/schools/'+encodeURIComponent(id)+'/teachers'") && admin.includes('<script src="/teachers-ui.js"></script>'));
 ck('teacher assignment editor: subject list + "other" + a set of grades per subject', ['asg-subject', 'asg-free', 'asg-grades', 'OTHER', 'type: \'checkbox\''].every(x => tui.includes(x)));
 ck('students are added from a keyboard sheet (Enter / arrows / paste / auto-new row / birth date / phone)', ['id="gdBody"', 'id="gdSave"'].every(x => sadm.includes(x)) && /e\.key==='Enter'\|\|e\.key==='ArrowDown'/.test(sadm) && sadm.includes("gdBody.addEventListener('paste'") && sadm.includes("gdBody.addEventListener('input'") && sadm.includes('data-c="birth"') === false && sadm.includes('data-c=\\"birth\\"') === false ? true : (sadm.includes('data-c=birth') || sadm.includes('data-c="birth"')));
@@ -60,18 +61,22 @@ ck('guardian page shows the transcript and notes for each child', gua.includes('
 // ---- round 2: every school-admin section is a dialog; no mixed members tab; clear gate; teacher login ----
 const stuJs = pub('student.js'), teacherPage = pub('teacher.html');
 const dialogTabs = [...sadm.matchAll(/(\w+):\['[^']+','(?:md|lg)'\]/g)].map(m => m[1]);
-const navTabs = [...sadm.matchAll(/<button class="nav"[^>]*data-tab="([a-z]+)"/g)].map(m => m[1]);
-ck('school admin: the old mixed "students and teachers" tab is gone from the menu', !navTabs.includes('members') && navTabs.includes('roster') && navTabs.includes('teachers'));
-ck('school admin: every menu item opens a dialog (' + navTabs.length + ' sections)', navTabs.length >= 12 && navTabs.every(t => dialogTabs.includes(t)));
-ck('school admin: every dialog section exists in the page', dialogTabs.every(t => sIds.has('tab-' + t)));
-ck('school admin: dashboard tiles include a dedicated review-requests area and no duplicated pending preview card', sadm.includes('id="overviewTiles"') && sadm.includes('id="requestTiles"') && sadm.includes("['requests','📨','طلبات تحتاج إلى مراجعة'") && !sadm.includes('id="pendingPreview"'));
+const tileStart=sadm.indexOf("UI.hub($('#overviewTiles')"),tileEnd=sadm.indexOf('/* ---------- roster ---------- */',tileStart);
+const tileTabs=[...sadm.slice(tileStart,tileEnd).matchAll(/\['([a-z]+)','/g)].map(m=>m[1]);
+ck('school admin: duplicate text sidebar is removed; dashboard tiles are the single navigation source', !sadm.includes('<aside class="sidebar"') && sadm.includes('id="overviewTiles"') && sadm.includes('id="sectionHomeBar"'));
+ck('school admin: each dashboard tile opens an existing dialog section ('+tileTabs.length+' tiles)', tileTabs.length>=15 && tileTabs.every(t=>dialogTabs.includes(t)) && dialogTabs.every(t=>sIds.has('tab-'+t)));
+ck('school admin: publishing is accessed from the content tile, not repeated as a separate dashboard tile', !tileTabs.includes('compose') && sadm.includes('data-goto="compose"') && sadm.includes('data-goto="posts"'));
+ck('school admin: dashboard includes the previously missing administration guide tile', tileTabs.includes('help') && sadm.includes("['help','📖','دليل الإدارة'"));
+ck('school admin: requests tile has student, teacher and guardian request categories', sadm.includes("title:'طلبات الطلاب'") && sadm.includes("title:'طلبات المعلمين'") && sadm.includes("title:'طلبات أولياء الأمور'"));
+ck('school admin: student request matching is searchable and only visible in the school admin request dialog', sadm.includes('data-match-search=') && sadm.includes('ابحث عن الطالب في سجل المدرسة') && sadm.includes('data-match-student=') && sadm.includes('data-school-request=') );
+ck('school admin: approval requires an explicitly selected exact roster match and server validates the roster record', sadm.includes('approve.disabled=!valid') && sadm.includes('اختر سجل الطالب المطابق') && readFileIfExists(path.join(root,'lib','extras.js')).includes('sameName(entry.name, member.name)'));
 ck('school admin: live refresh follows the open dialog', sadm.includes('if(window.__dialogTab)return window.__dialogTab'));
 ck('grade entry uses lists from the school (subject, term, exam type) and a numbered sheet with Enter navigation', /<select id="resSubject">/.test(sadm) && /<select id="resTerm">/.test(sadm) && /<select id="resExam">/.test(sadm) && sadm.includes('/api/school-admin/academic-options') && sadm.includes('${i+1}. ${esc(m.name)}') && !sadm.includes('list="resSubjects"'));
 ck('pending teachers can be approved or refused from the Teachers dialog', tui.includes("review: '") === false && tui.includes('decide(t, \'approve\')') && sadm.includes("review:'/api/school-admin/members/review'"));
 ck('dialog headings are not repeated inside the dialog', /\.ui-body>\.card>h2:first-child/.test(ui));
 ck('learn app: "my school" asks a signed-out student to link his account instead of dumping him on a login page', stuJs.includes('openSchoolGate') && stuJs.includes('يلزم تسجيل حسابك أولًا') && stuJs.includes("href: '/student/school'"));
 ck('/teacher page forwards school teachers to their school page', teacherPage.includes('if(d.redirect)') && teacherPage.includes('location.href=d.redirect'));
-ck('student and teacher school portals redirect by the authenticated account role without sharing the wrong workspace', stu.includes("roleSession.member?.role==='teacher'") && stu.includes("location.replace('/school')") && sch.includes("roleSession.member?.role==='student'") && sch.includes("location.replace('/student/school')"));
+ck('student and teacher school portals redirect by the authenticated account role without sharing the wrong workspace', stu.includes("roleSession.member?.role==='teacher'") && stu.includes("location.replace('/teacher/school')") && sch.includes("roleSession.member?.role==='student'") && sch.includes("location.replace('/student/school')"));
 ck('Arabic exit confirmation is included in all major app portals and cached for offline launch', ['student.html','admin.html','school-admin.html','school.html','student-school.html','teacher.html','guardian.html'].every(f=>pub(f).includes('/exit-confirm.js')) && ['sw.js','admin/sw.js','school-admin/sw.js'].every(f=>pub(f).includes('/exit-confirm.js')));
 ck('school admin: student bulk-entry grade list is refreshed from school academic options', sadm.includes("api('/api/school-admin/academic-options')") && sadm.includes('async function loadRoster()'));
 ck('school admin: date fields support keyboard input and a calendar picker', sadm.includes('setupEditableDates') && sadm.includes('data-date-picker') && sadm.includes('inputMode'));

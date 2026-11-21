@@ -61,25 +61,27 @@ let hasPoppler = true; try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' 
     ck('school created', mk.status < 300 && sid);
     const sa = await request('POST', '/api/school-admin/login', { body: { email: 'head@example.invalid', password: 'Head-Password-123' } }); const sac = cookieOf(sa);
     ck('school admin login', sa.status === 200 && sac);
-    // ---- roster: the school enters names, the student picks his own name when linking an e-mail ----
+    // ---- roster privacy: the student submits a name; school admin matches it to the private roster ----
     ck('roster add validates the grade', (await request('POST', '/api/school-admin/roster', { cookie: sac, body: { name: 'طالب', grade: 'صف غير موجود' } })).status === 400);
     const r1 = await request('POST', '/api/school-admin/roster', { cookie: sac, body: { name: 'طالب تجريبي', grade: 'الأول الأساسي', section: 'أ', guardianPhone: '+967 711 000 121' } });
     ck('school adds a student name', r1.status === 201 && r1.json.student.guardianPhone === '+967711000121'); const rid = r1.json.student.id;
     ck('duplicate name in the same grade is refused', (await request('POST', '/api/school-admin/roster', { cookie: sac, body: { name: 'طالب  تجريبي', grade: 'الأول الأساسي' } })).status === 409);
     const bulk = await request('POST', '/api/school-admin/roster/bulk', { cookie: sac, body: { grade: 'الأول الأساسي', section: 'ب', names: 'سارة أحمد\nعمر خالد|ج\nسارة أحمد\n\nليلى' } });
     ck('bulk paste adds names, skips duplicates, keeps per-line section', bulk.json.added === 3 && bulk.json.skipped === 1);
-    const pub = (await request('GET', '/api/school-roster?schoolId=' + sid + '&grade=' + encodeURIComponent('الأول الأساسي'))).json;
-    ck('public list offers the unlinked names of the grade', pub.hasRoster && pub.students.length === 4 && pub.students.some(x => x.id === rid));
-    const noPick = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'اسم حر', email: 'kid@example.invalid', password: 'Kid-Password-123', grade: 'الأول الأساسي' } });
-    ck('with a roster, a student must pick his name from it', noPick.status === 400);
-    const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: rid, name: 'اسم مزوّر', email: 'kid@example.invalid', password: 'Kid-Password-123', grade: 'الصف الثاني' } });
-    ck('registration is linked to the roster name (typed name/grade ignored)', reg.status < 300);
+    ck('public roster endpoint never discloses student names', (await request('GET', '/api/school-roster?schoolId=' + sid + '&grade=' + encodeURIComponent('الأول الأساسي'))).status === 410);
+    const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'طالب تجريبي', email: 'kid@example.invalid', password: 'Kid-Password-123', grade: 'الأول الأساسي', section: 'أ' } });
+    ck('student submits their own name and grade without selecting a roster record', reg.status === 201);
     const members = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members, kid = members.find(m => m.email === 'kid@example.invalid');
-    ck('the pending request carries the roster name and grade', kid && kid.name === 'طالب تجريبي' && kid.grade === 'الأول الأساسي' && kid.section === 'أ');
-    ck('the same name cannot be claimed twice', (await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: rid, email: 'other@example.invalid', password: 'Kid-Password-123' } })).status === 409);
-    ck('a taken name leaves the public list', !(await request('GET', '/api/school-roster?schoolId=' + sid)).json.students.some(x => x.id === rid));
+    ck('pending request stores the student-entered name and grade but no roster ID', kid && kid.name === 'طالب تجريبي' && kid.grade === 'الأول الأساسي' && kid.section === 'أ' && !kid.rosterId);
+    ck('same name may request an account but cannot claim the roster without school approval', (await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'طالب تجريبي', email: 'other@example.invalid', password: 'Kid-Password-123', grade: 'الأول الأساسي', section: 'أ' } })).status === 201);
+    ck('the school must select a matching roster record before approval', (await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: kid.id, action: 'approve' } })).status === 404);
+    const otherId = (await request('GET', '/api/school-admin/roster', { cookie: sac })).json.students.find(x => x.name === 'سارة أحمد').id;
+    ck('school admin cannot attach a different name to the request', (await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: kid.id, action: 'approve', rosterId: otherId } })).status === 409);
     const pre = await request('POST', '/api/school-member/login', { body: { email: 'kid@example.invalid', password: 'Kid-Password-123' } });
     ck('no school services before approval', pre.status === 403 || pre.status === 401);
+    const linked = await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: kid.id, action: 'approve', rosterId: rid } });
+    ck('school admin links the exact matching student record and approves the account', linked.status === 200 && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === kid.id).rosterId === rid);
+    ck('public roster endpoint remains closed after the account is linked', (await request('GET', '/api/school-roster?schoolId=' + sid)).status === 410);
     await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: kid.id, action: 'approve' } });
     const st = await request('POST', '/api/school-member/login', { body: { email: 'kid@example.invalid', password: 'Kid-Password-123' } }); const stc = cookieOf(st);
     ck('student login after approval', st.status === 200 && stc);
@@ -171,13 +173,14 @@ let hasPoppler = true; try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' 
 
     // ---- join code, unlink, delete rules ----
     await request('PUT', '/api/school-admin/roster/settings', { cookie: sac, body: { joinCode: '1234' } });
-    const locked = (await request('GET', '/api/school-roster?schoolId=' + sid)).json;
-    ck('with a join code the names are hidden until it is given', locked.joinCodeRequired === true && locked.students.length === 0);
-    const unlocked = (await request('GET', '/api/school-roster?schoolId=' + sid + '&code=1234')).json;
-    ck('the right code reveals the list', unlocked.students.length === 3);
-    const sara = unlocked.students.find(x => x.name === 'سارة أحمد');
-    ck('registration without the code is refused', (await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: sara.id, email: 'sara@example.invalid', password: 'Sara-Password-123' } })).status === 403);
-    ck('registration with the code works', (await request('POST', '/api/student/register', { body: { schoolId: sid, rosterId: sara.id, joinCode: '1234', email: 'sara@example.invalid', password: 'Sara-Password-123' } })).status === 201);
+    const locked = await request('GET', '/api/school-roster?schoolId=' + sid);
+    ck('with a join code the public roster lookup remains closed', locked.status === 410 && (await request('GET', '/api/schools')).json.schools.find(x => x.id === sid).joinCodeRequired === true);
+    ck('registration without the code is refused', (await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'سارة أحمد', grade: 'الأول الأساسي', section: 'ب', email: 'sara@example.invalid', password: 'Sara-Password-123' } })).status === 403);
+    const saraReg = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'سارة أحمد', grade: 'الأول الأساسي', section: 'ب', joinCode: '1234', email: 'sara@example.invalid', password: 'Sara-Password-123' } });
+    const saraReq = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(x => x.email === 'sara@example.invalid');
+    ck('registration with the code submits a pending name request without exposing the roster', saraReg.status === 201 && saraReq && !saraReq.rosterId);
+    const sara = (await request('GET', '/api/school-admin/roster', { cookie: sac })).json.students.find(x => x.name === 'سارة أحمد');
+    ck('school admin approves the request by matching the roster record', (await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: saraReq.id, action: 'approve', rosterId: sara.id } })).status === 200);
     await request('PUT', '/api/school-admin/roster/settings', { cookie: sac, body: { joinCode: '' } });
     ck('a linked student cannot be deleted from the roster', (await request('DELETE', '/api/school-admin/roster/' + sara.id, { cookie: sac })).status === 409);
     const omar = (await request('GET', '/api/school-admin/roster', { cookie: sac })).json.students.find(x => x.name === 'عمر خالد');
@@ -189,7 +192,7 @@ let hasPoppler = true; try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' 
     ck('renaming a roster student updates the linked account', ren.status === 200 && kidNow.name === 'طالب تجريبي معدّل' && kidNow.section === 'د');
     const unlink = await request('POST', '/api/school-admin/roster/' + rid + '/unlink', { cookie: sac });
     ck('unlinking the e-mail ends the account access', unlink.status === 200 && (await request('GET', '/api/school-member/me', { cookie: stc })).json.authenticated !== true);
-    ck('after unlinking, the name is free again in the public list', (await request('GET', '/api/school-roster?schoolId=' + sid)).json.students.some(x => x.id === rid));
+    ck('after unlinking, the roster still remains private from public lookup', (await request('GET', '/api/school-roster?schoolId=' + sid)).status === 410);
 
     // ---- backups ----
     const bk = await request('POST', '/api/admin/backups', { cookie: ac, body: {} });
