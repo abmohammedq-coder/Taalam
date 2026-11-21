@@ -34,5 +34,67 @@ function nFill(){const a=TEACH.assignments[Number($('#nAsg').value)]||TEACH.assi
 async function nLoad(){try{const d=await api('/api/school-member/teacher/notes');$('#nList').innerHTML=d.notes.slice(0,12).map(n=>`<div class="item"><b>${esc(n.studentName)}</b> <span class="pill">${esc(n.kindLabel)}</span><small>${esc(n.text)}</small></div>`).join('')}catch{}}
 $('#nAsg').addEventListener('change',nFill);
 $('#noteForm').addEventListener('submit',async e=>{e.preventDefault();const a=TEACH.assignments[Number($('#nAsg').value)];try{const d=await api('/api/school-member/teacher/notes',{method:'POST',body:JSON.stringify({studentId:$('#nStudent').value,kind:$('#nKind').value,text:$('#nText').value,subject:a.subject})});$('#nStatus').textContent=d.queued?'سيُرسل عند عودة الإنترنت.':'أُرسلت الملاحظة.';$('#nText').value='';if(!d.queued)nLoad()}catch(err){$('#nStatus').textContent=err.message}});
-const _refreshT=refresh;refresh=async function(){await _refreshT.apply(this,arguments);teacherSetup().catch(()=>{})};
-</script></body></html>
+const _refreshT=refresh;refresh=async function(){await _refreshT.apply(this,arguments);const m=await api('/api/school-member/me').catch(()=>null);await teacherSetup().catch(()=>{});if(window.__buildRoleActionHub&&m?.member)window.__buildRoleActionHub(m.member.role==='teacher'?'teacher':'student')};
+</script><script>
+/* v2.91.0 — role-based action hub: each task opens as a focused workspace. */
+(function(){
+ const $=s=>document.querySelector(s);
+ let built=false, activeRole='student';
+ function makeHub(role){
+  const dash=$('#dashboard'), base=dash?.querySelector(':scope > .card'); if(!base)return;
+  const membership=$('#membership');
+  let hub=$('#roleActionHub');
+  if(!hub){
+   hub=document.createElement('section');hub.id='roleActionHub';hub.className='role-hub';
+   const nav=document.createElement('nav');nav.className='role-action-grid';nav.id='roleActionGrid';nav.setAttribute('aria-label','المهام الرئيسية');
+   const panels=document.createElement('div');panels.id='roleActionPanels';
+   hub.append(nav,panels);membership.insertAdjacentElement('afterend',hub);
+  }
+  const nav=$('#roleActionGrid'),panels=$('#roleActionPanels');
+  const groups=role==='teacher' ? [
+   ['posts','🏫','منشورات المدرسة',['posts']],
+   ['publish','📢','نشر محتوى للطلاب',['teacherTools']],
+   ['grades','🎓','رصد درجات المواد',['teacherGrading']],
+   ['schedule','🗓️','الجدول المدرسي',['memberSchedule']],
+   ['notes','📝','ملاحظات عن الطلاب',['teacherNotes']]
+  ] : [
+   ['posts','🏫','منشورات المدرسة',['posts']],
+   ['schedule','🗓️','جدولي المدرسي',['memberSchedule']],
+   ['attendance','📋','سجل الحضور والغياب',['myAttendance']],
+   ['delegate','🧾','تسجيل حضور الفصل',['delegateAttendance']],
+   ['work','📚','واجباتي وتسليماتي',['studentWork']]
+  ];
+  const existing=Object.fromEntries(groups.map(g=>[g[0],g[3].map(id=>$('#'+id)).filter(Boolean)]));
+  nav.replaceChildren();panels.replaceChildren();
+  for(const [key,emoji,label] of groups){
+   const visible=existing[key].some(el=>!el.classList.contains('hidden')&&!el.hidden);if(!visible)continue;
+   const b=document.createElement('button');b.type='button';b.className='role-action';b.innerHTML=`<span class="role-action-icon">${emoji}</span><span>${label}</span><span class="role-action-arrow">فتح القسم ←</span>`;
+   b.addEventListener('click',()=>open(key));nav.append(b);
+   const panel=document.createElement('section');panel.className='role-panel card';panel.hidden=true;panel.dataset.rolePanel=key;
+   const head=document.createElement('div');head.className='role-panel-head';
+   const h=document.createElement('h3');h.textContent=label;
+   const back=document.createElement('button');back.type='button';back.className='secondary role-back';back.textContent='← العودة إلى الأقسام';back.addEventListener('click',home);
+   head.append(h,back);panel.append(head);
+   for(const el of existing[key]){
+    // Keep the existing forms, IDs, and event handlers intact; move only their visual containers.
+    const node=(el.id==='memberSchedule'||el.id==='myAttendance')?el.parentElement:el;
+    if(node && node.parentElement!==panel)panel.append(node);
+   }
+   panels.append(panel);
+  }
+  // Hide legacy headings left behind after moving the original task containers.
+  const oldPostsHeading=[...base.querySelectorAll(':scope > h3')].find(x=>x.textContent.includes('منشورات مدرستي'));
+  if(oldPostsHeading)oldPostsHeading.remove();
+  const open=(key)=>{nav.hidden=true;panels.querySelectorAll('[data-role-panel]').forEach(x=>x.hidden=x.dataset.rolePanel!==key);};
+  function home(){panels.querySelectorAll('[data-role-panel]').forEach(x=>x.hidden=true);nav.hidden=false;}
+  home();built=true;activeRole=role;
+ }
+ window.__buildRoleActionHub=makeHub;
+ document.addEventListener('DOMContentLoaded',async()=>{if(!$('#dashboard')||$('#dashboard').classList.contains('hidden'))return;const r=await TQ.fetch('/api/school-member/me').then(x=>x.json()).catch(()=>null);if(r?.member)makeHub(r.member.role==='teacher'?'teacher':'student')});
+})();
+</script>
+<style>
+.role-hub{margin-top:18px}.role-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0 18px}.role-action{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-height:112px;padding:16px;text-align:right;background:#fff;color:#194c3b;border:1px solid #dce8e1;border-radius:16px;box-shadow:0 5px 18px #173d2c0a}.role-action:hover{background:#f1f7f2;border-color:#a9c9b4}.role-action-icon{font-size:25px}.role-action-arrow{font-size:12px;color:#6a8175;font-weight:400}.role-panel{margin:0 0 16px;padding:18px;background:#fff;border:1px solid #dce8e1;border-radius:16px}.role-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e5eee7}.role-panel-head h3{margin:0}.role-back{white-space:nowrap}.role-panel[hidden],.role-action-grid[hidden]{display:none!important}.role-panel .post{margin-top:10px}@media(max-width:520px){.role-action-grid{grid-template-columns:1fr}.role-action{min-height:86px;display:grid;grid-template-columns:36px 1fr;align-items:center}.role-action-arrow{grid-column:2}}
+</style>
+
+</body></html>
