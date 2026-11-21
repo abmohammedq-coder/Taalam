@@ -1,4 +1,4 @@
-// v2.93.1: checks for compact attendance rows, grade-first certificates, and academic-year entry.
+// v2.93.2: checks for compact attendance rows, grade-first certificates, and academic-year entry.
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -7,10 +7,10 @@ const checks=[];const ck=(name,ok)=>checks.push([name,!!ok]);
 ck('book upload offers first term, second term, and both terms',/name="term"[\s\S]*?value="الترم الأول"[\s\S]*?value="الترم الثاني"[\s\S]*?value="الترمين معًا"/.test(admin));
 ck('book upload explains that both terms are in one combined book',admin.includes('الجزء الأول والثاني في كتاب واحد'));
 ck('selected book term is passed unchanged to the upload API',admin.includes("term:f.get('term')"));
-ck('student add landing panel has one unified add-student action',school.includes('id="rsBulkOpen"')&&school.includes('إضافة طالب أو عدة طلاب')&&!school.includes('id="rsSingleOpen"'));
+ck('student add landing panel has one unified add-student action',school.includes("section:'#rsBulkCard'")&&school.includes('إضافة طالب أو عدة طلاب')&&!school.includes('id="rsSingleOpen"'));
 ck('the redundant single-student form and handler are removed',!school.includes('id="rsSingleCard"')&&!school.includes('id="rosterForm"')&&!school.includes('rsSingleStatus'));
 ck('the unified student sheet supports adding one or many students',/class="card hidden" id="rsBulkCard"[\s\S]*?id="gdBody"/.test(school)&&school.includes('id="gdSave"'));
-ck('the unified add action opens the keyboard-friendly student sheet',school.includes("UI.openSection('#rsBulkCard'"));
+ck('the unified add action opens the keyboard-friendly student sheet',school.includes("section:'#rsBulkCard'")&&school.includes('onOpen:()=>loadRoster()'));
 ck('the unified student sheet shows its own save feedback',school.includes('id="rsBulkStatus"')&&school.includes("msg('#rsBulkStatus'"));
 ck('bulk grid remains keyboard/paste friendly',school.includes("gdBody.addEventListener('paste'")&&school.includes("e.key==='Enter'||e.key==='ArrowDown'"));
 ck('UI restores moved forms to their original positions after dialog close',ui.includes("document.createComment('ui-home')")&&ui.includes('ph.parentNode.insertBefore(n, ph)'));
@@ -23,10 +23,10 @@ ck('results menu opens separate actions for entry, latest results, and grade rep
 ck('grade report offers all subjects and prints a clean non-duplicated column set',school.includes("fillSelect('#reportSubject',['كل المواد',...o.subjects])")&&school.includes('<th>المعدل</th><th>التقدير</th>')&&!school.includes('<th>الوصف</th>'));
 ck('school result-card print template groups assessment rows by subject columns and prints two slips per A4 page',school.includes('id="printResultCards"')&&school.includes('طباعة النتيجة بالنموذج المدرسي')&&school.includes('const subjects=[...new Set(cols.map(c=>c.subject))]')&&school.includes('.slip:nth-of-type(2n){break-after:page}')&&school.includes('schoolLogo'));
 ck('birth date can be edited by keyboard and selected from the calendar',school.includes('data-c="birth" type="text" inputmode="numeric"')&&school.includes('data-date-picker type="date"')&&school.includes('normalizeBirthInput'));
-ck('release and app caches use v2.93.1',read('package.json').includes('2.93.1')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.93.1'")));
+ck('release and app caches use v2.93.2',read('package.json').includes('2.93.2')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.93.2'")));
 ck('school-admin print templates do not inject a script tag inside an active script block', !read('public/school-admin.html').includes('<script src="/exit-confirm.js"></script></html>`'));
 ck('result report rows do not repeat rank or grade columns', !read('public/school-admin.html').includes("<td>${r.rank??'—'}</td><td>${esc(r.gradeLabel||'—')}"));
-ck('duplicate assessment identity includes title/part', read('lib/extras.js').includes('[st.id, subject, examType, title, term, year]') && read('lib/extras.js').includes('a.title === title'));
+ck('duplicate assessment identity includes title/part', read('lib/extras.js').includes('[st.id, subject, examType, title, term, year].join('|')') && read('lib/extras.js').includes("String(a.title || '') === title"));
 for(const [n,ok] of checks)console.log((ok?'PASS ':'FAIL ')+n);
 console.log(`\n${checks.filter(x=>x[1]).length}/${checks.length} workflow UI checks passed.`);
 if(checks.some(x=>!x[1]))process.exitCode=1;

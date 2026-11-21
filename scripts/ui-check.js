@@ -30,9 +30,10 @@ ck('platform owner can edit a school (data, logo, accounts, password reset)', ['
 // school admin: dialogs
 const sSel = [...sadm.matchAll(/section:'(#[A-Za-z0-9_-]+)'/g)].map(m => m[1].slice(1));
 ck('school admin: roster and results entry open in dialogs that exist (' + sSel.length + ')', sSel.length >= 3 && sSel.every(i => sIds.has(i)));
-ck('school admin: the entry cards are hidden stashes, not inline', /id="rsAddCard"/.test(sadm) && /class="card hidden" id="rsAddCard"/.test(sadm) && /class="card hidden" id="resEntryCard"/.test(sadm));
+ck('school admin: bulk student entry opens directly, and results entry stays a hidden dialog section', /id="rsBulkCard"/.test(sadm) && !/id="rsAddCard"/.test(sadm) && /class="card hidden" id="resEntryCard"/.test(sadm) && /section:'#rsBulkCard'/.test(sadm));
 ck('no element id is defined twice in the platform admin page', (() => { const all = [...admin.matchAll(/ id="([A-Za-z0-9_-]+)"/g)].map(m => m[1]); return new Set(all).size === all.length; })());
 ck('no element id is defined twice in the school admin page', (() => { const all = [...sadm.matchAll(/ id="([A-Za-z0-9_-]+)"/g)].map(m => m[1]); return new Set(all).size === all.length; })());
+ck('school admin: every direct ID selector points to an existing element (no stale roster controls)', [...sadm.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)].every(m=>sIds.has(m[1])) && !sadm.includes("$('#rsGrade')") && !sadm.includes("$('#rsSection')"));
 
 // ---- teachers, grid, transcripts ----
 const sch = pub('school.html'), stu = pub('student-school.html'), gua = pub('guardian.html'), tui = pub('teachers-ui.js'), tools = pub('tools.js');
@@ -63,7 +64,7 @@ const navTabs = [...sadm.matchAll(/<button class="nav"[^>]*data-tab="([a-z]+)"/g
 ck('school admin: the old mixed "students and teachers" tab is gone from the menu', !navTabs.includes('members') && navTabs.includes('roster') && navTabs.includes('teachers'));
 ck('school admin: every menu item opens a dialog (' + navTabs.length + ' sections)', navTabs.length >= 12 && navTabs.every(t => dialogTabs.includes(t)));
 ck('school admin: every dialog section exists in the page', dialogTabs.every(t => sIds.has('tab-' + t)));
-ck('school admin: the dashboard has tiles for the sections, and the "pending" card points to students / teachers', sadm.includes('id="overviewTiles"') && !sadm.includes('data-goto="members"') && sadm.includes('data-goto="teachers"'));
+ck('school admin: dashboard tiles include a dedicated review-requests area and no duplicated pending preview card', sadm.includes('id="overviewTiles"') && sadm.includes('id="requestTiles"') && sadm.includes("['requests','📨','طلبات تحتاج إلى مراجعة'") && !sadm.includes('id="pendingPreview"'));
 ck('school admin: live refresh follows the open dialog', sadm.includes('if(window.__dialogTab)return window.__dialogTab'));
 ck('grade entry uses lists from the school (subject, term, exam type) and a numbered sheet with Enter navigation', /<select id="resSubject">/.test(sadm) && /<select id="resTerm">/.test(sadm) && /<select id="resExam">/.test(sadm) && sadm.includes('/api/school-admin/academic-options') && sadm.includes('${i+1}. ${esc(m.name)}') && !sadm.includes('list="resSubjects"'));
 ck('pending teachers can be approved or refused from the Teachers dialog', tui.includes("review: '") === false && tui.includes('decide(t, \'approve\')') && sadm.includes("review:'/api/school-admin/members/review'"));
@@ -72,5 +73,10 @@ ck('learn app: "my school" asks a signed-out student to link his account instead
 ck('/teacher page forwards school teachers to their school page', teacherPage.includes('if(d.redirect)') && teacherPage.includes('location.href=d.redirect'));
 ck('student and teacher school portals redirect by the authenticated account role without sharing the wrong workspace', stu.includes("roleSession.member?.role==='teacher'") && stu.includes("location.replace('/school')") && sch.includes("roleSession.member?.role==='student'") && sch.includes("location.replace('/student/school')"));
 ck('Arabic exit confirmation is included in all major app portals and cached for offline launch', ['student.html','admin.html','school-admin.html','school.html','student-school.html','teacher.html','guardian.html'].every(f=>pub(f).includes('/exit-confirm.js')) && ['sw.js','admin/sw.js','school-admin/sw.js'].every(f=>pub(f).includes('/exit-confirm.js')));
+ck('school admin: student bulk-entry grade list is refreshed from school academic options', sadm.includes("api('/api/school-admin/academic-options')") && sadm.includes('async function loadRoster()'));
+ck('school admin: date fields support keyboard input and a calendar picker', sadm.includes('setupEditableDates') && sadm.includes('data-date-picker') && sadm.includes('inputMode'));
+ck('school admin: certificate student list is initialized and filtered by selected grade', sadm.includes('window.schoolCertificateStudents') && sadm.includes('filter(x=>x.grade===grade)'));
+ck('school admin: internal JavaScript exceptions are translated to Arabic status text', sadm.includes('حدث خطأ داخلي أثناء تنفيذ العملية'));
+ck('school admin: dashboard loader no longer writes to the removed pending-preview element', !sadm.includes("$('#pendingPreview')") && !sadm.includes('id="pendingPreview"'));
 let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
 console.log(`\n${checks.length - failed}/${checks.length} UI wiring checks passed.`); if (failed) process.exitCode = 1;
