@@ -1,4 +1,4 @@
-// v2.93.8: checks for compact attendance rows, grade-first certificates, and academic-year entry.
+// v2.94.4: checks for compact attendance rows, grade-first certificates, and academic-year entry.
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -23,13 +23,16 @@ ck('results menu opens separate actions for entry, latest results, and grade rep
 ck('grade report pivots to one row per student and one column per subject without rank, letter bands, or score denominators',school.includes('function reportPivot()')&&school.includes('<th>اسم الطالب</th>')&&school.includes('<th>المجموع</th>')&&school.includes('reportSubjectLabel(c.subject||source)')&&!school.includes("gradeLetter||'—'")&&!school.includes(' / ${esc(c.max)}'));
 ck('individual result is a separate action and prints one independent result per student using the school model',school.includes('id="printResultCards"')&&school.includes('id="printResultCards">النتيجة</button>')&&school.includes('const subjects=[...new Set((reportData.subjects?.length?reportData.subjects:cols.map(c=>c.subject))')&&school.includes('.slip:nth-of-type(2n){break-after:page}')&&school.includes('المحصلة الأولى')&&school.includes('class="note"')&&!school.includes('من ${ep(v.max)}'));
 ck('birth date can be edited by keyboard and selected from the calendar',school.includes('data-c="birth" type="text" inputmode="numeric"')&&school.includes('data-date-picker type="date"')&&school.includes('normalizeBirthInput'));
-ck('release and app caches use v2.93.8',read('package.json').includes('2.93.8')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.93.8'")));
+ck('release and app caches use v2.94.4',read('package.json').includes('2.94.4')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.94.4'")));
 ck('school-admin print templates do not inject a script tag inside an active script block', !read('public/school-admin.html').includes('<script src="/exit-confirm.js"></script></html>`'));
 ck('result report rows do not repeat rank or grade columns', !read('public/school-admin.html').includes("<td>${r.rank??'—'}</td><td>${esc(r.gradeLabel||'—')}"));
 ck('duplicate assessment identity prevents standardized semester duplicates while preserving legacy titled assessments', read('lib/extras.js').includes('const standard=') && read('lib/extras.js').includes("String(a.title||'')===title") && read('lib/extras.js').includes('canonicalAssessment(a.examType,a.term)===examType'));
 ck('individual result print supports one selected student or all students and removes the unnecessary result number',school.includes('id="reportStudent"')&&school.includes('reportData.rows=reportData.rows.filter')&&!school.includes('رقم النتيجة: ${i+1}'));
 ck('result card heading follows the selected term and displays ordinal rank words',school.includes("second?'الثاني':'الأول'")&&school.includes('ordinalArabic(r.rank)'));
 ck('grade-specific curriculum editor and validation are wired through the school settings',school.includes('data-grade-subject')&&school.includes('b.gradeSubjects=curriculum.gradeSubjects')&&read('lib/extras.js').includes('هذه المادة غير مقررة لهذا الصف وفق خطة المدرسة'));
+ck('grade curriculum uses a dropdown instead of checkbox lists',school.includes('data-grade-subject-select')&&!school.includes('data-grade-subject=')&&school.includes('— اختر مادة —'));
+ck('each grade can add a custom subject from the other option and save it to the school-wide subject list',school.includes('value=\"__other__\"')&&school.includes('data-other-subject-input')&&school.includes('data-save-other-subject')&&school.includes('curriculum.subjects.push(canonical)'));
+ck('selected subjects appear as removable grade-specific chips',school.includes('data-remove-grade-subject')&&school.includes('curriculum.gradeSubjects[grade].push(canonical)'));
 ck('coursework certificate is separate from semester and annual certificates',school.includes('value="coursework">شهادة أعمال السنة')&&read('lib/extras.js').includes("kind==='coursework'"));
 ck('guardian grade scores use the shared transcript instead of a second score-pill layout',read('public/guardian.html').includes('كشف الدرجات الموحد أعلاه')&&!read('public/guardian.html').includes('نتائج الاختبارات</h4>'));
 for(const [n,ok] of checks)console.log((ok?'PASS ':'FAIL ')+n);

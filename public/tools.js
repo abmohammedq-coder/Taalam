@@ -65,6 +65,20 @@
     const ordinal = n => ['الأول','الثاني','الثالث','الرابع','الخامس','السادس','السابع','الثامن','التاسع','العاشر'][Number(n)-1] || (n ? 'المرتبة '+n : '—');
     const bx = printing ? 'border:1px solid #cfd8d2;padding:7px 9px;text-align:right' : 'border-bottom:1px solid #e0e9df;padding:8px 9px;text-align:right', hd = 'background:#f1f5ef;font-weight:700;white-space:normal';
     const summary = t.hidden ? '' : '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + [['المعدل',t.average==null?'—':fm(t.average)+'٪'],['التقدير',t.gradeLabel||'—'],['الترتيب',t.rank==null?'—':ordinal(t.rank)+' من '+t.rankOutOf]].map(([k,v])=>'<div style="border:1px solid #cfd8d2;border-radius:9px;padding:9px 12px;min-width:110px"><small>'+esc(k)+'</small><br><b>'+esc(v)+'</b></div>').join('') + '</div>';
+    if (Array.isArray(t.resultCards)) {
+      const cards=t.resultCards.filter(x=>x.hasGrades);
+      if (!cards.length) return summary + '<p class="muted">لا توجد درجات مسجلة للعام الدراسي الحالي.</p>';
+      const cardHtml=cards.map(card=>{
+        const head='<tr><th style="'+bx+';'+hd+'">بيان النتيجة</th>'+card.subjects.map(x=>'<th style="'+bx+';'+hd+'">'+esc(x.subject)+'</th>').join('')+'<th style="'+bx+';'+hd+'">المجموع</th></tr>';
+        const values=(key)=>card.subjects.map(x=>x[key]&&!t.hidden?esc(fm(x[key].score)):'—');
+        const sum=(key)=>card.subjects.reduce((n,x)=>n+(Number(x[key]?.score)||0),0);
+        const row=(label,key)=>'<tr><th style="'+bx+';font-weight:700">'+esc(label)+'</th>'+values(key).map(v=>'<td style="'+bx+'">'+v+'</td>').join('')+'<td style="'+bx+'">'+(t.hidden?'—':fm(sum(key)))+'</td></tr>';
+        const totals=card.subjects.map(x=>x.total);
+        const totalRow='<tr><th style="'+bx+';font-weight:700;background:#edf2ee">المجموع</th>'+totals.map(x=>'<td style="'+bx+';font-weight:700;background:#edf2ee">'+(x&&!t.hidden?esc(fm(x.score)):'—')+'</td>').join('')+'<td style="'+bx+';font-weight:700;background:#edf2ee">'+(t.hidden?'—':fm(card.total))+'</td></tr>';
+        return '<section style="margin:12px 0"><h4 style="margin:8px 0">'+esc(card.term)+'</h4><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><thead>'+head+'</thead><tbody>'+row(card.monthlyLabel,'monthly')+row(card.examLabel,'exam')+totalRow+'</tbody></table></div></section>';
+      }).join('');
+      return summary+(t.hidden?'<div style="background:#fff7e0;border:2px solid #e6c36a;border-radius:14px;padding:10px 14px;margin:8px 0">🔒 '+esc(t.hiddenReason)+'</div>':'')+cardHtml;
+    }
     if (!t.rows.length) return summary + '<p class="muted">لا توجد درجات مسجلة بعد.</p>';
     const head = '<tr><th style="' + bx + ';' + hd + '">المادة</th>' + t.columns.map(c => '<th style="' + bx + ';' + hd + '">' + esc(c.label) + '</th>').join('') + '<th style="' + bx + ';' + hd + '">المجموع</th><th style="' + bx + ';' + hd + '">النسبة</th></tr>';
     const body = t.rows.map(r => '<tr><td style="' + bx + ';font-weight:700">' + esc(r.subject) + '</td>' + t.columns.map(c => { const x = r.cells[c.key]; return '<td style="' + bx + '">' + (!x ? '—' : x.hidden ? '<span style="filter:blur(6px);user-select:none">88 / 100</span>' : fm(x.score) + ' / ' + fm(x.max)) + '</td>'; }).join('')

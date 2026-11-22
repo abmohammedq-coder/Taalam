@@ -326,7 +326,7 @@
   // "my school / my grades": only for a student whose e-mail is linked to his name in the school list
   async function openSchoolGate() {
     let me = null; try { me = await api('/api/school-member/me'); } catch { /* offline */ }
-    if (me && me.authenticated) { location.href = me.member && me.member.role === 'teacher' ? '/school' : '/student/school'; return; }
+    if (me && me.authenticated) { location.href = me.member && me.member.role === 'teacher' ? '/teacher/' : '/student/school'; return; }
     openSheet('درجاتي ونتائجي', () => {
       setBody(el('div', { class: 'center', style: 'flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center' },
         el('div', { style: 'font-size:56px', text: '🔒' }),
@@ -438,7 +438,7 @@
   async function getInteractives(bookId) { if (!INTER[bookId]) { try { INTER[bookId] = (await api('/api/learn/interactives?bookId=' + encodeURIComponent(bookId))).items || []; } catch { INTER[bookId] = []; } } return INTER[bookId]; }
   const loadedScripts = {};
   const loadScript = url => loadedScripts[url] || (loadedScripts[url] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = url; s.onload = res; s.onerror = () => { delete loadedScripts[url]; rej(new Error('تعذّر تحميل التجربة. تحقق من الاتصال.')); }; document.head.append(s); }));
-  const SIM_VER = '2.93.8';
+  const SIM_VER = '2.93.9';
   // opened from a book page: shows where it comes from, the experiment itself, and a way back to the exact page
   async function screenSim(item, book) {
     const sid = S.sid; setBody(loading('أجهّز التجربة…'));
