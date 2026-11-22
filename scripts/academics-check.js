@@ -217,6 +217,17 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('password reset ends the old session and the old password stops working', rp.status === 200 && (await request('GET', '/api/school-member/teacher/overview', { cookie: tc2 })).status === 401 && (await request('POST', '/api/school-member/login', { body: { email: 'huda@example.invalid', password: 'Teacher-Password-2' } })).status === 401 && (await request('POST', '/api/school-member/login', { body: { email: 'huda@example.invalid', password: 'Teacher-Password-9' } })).status === 200);
     await request('PATCH', '/api/school-admin/teachers/' + t1.json.teacher.id, { cookie: sac, body: { active: false } });
     ck('a disabled teacher is logged out and cannot log in', (await request('GET', '/api/school-member/teacher/overview', { cookie: tc1 })).status === 401 && (await request('POST', '/api/school-member/login', { body: { email: 'abd@example.invalid', password: 'Teacher-Password-1' } })).status >= 400);
+    // ---------- grade-specific curriculum ----------
+    const curriculumSave=await request('PUT','/api/school-admin/settings',{cookie:sac,body:{grades:[G1,G2],subjects:[QURAN,MATH],gradeSubjects:{[G1]:[QURAN],[G2]:[MATH]}}});
+    const curriculumOptions=(await request('GET','/api/school-admin/academic-options',{cookie:sac})).json;
+    ck('school stores an independent subject list for every grade and returns it to the admin UI',curriculumSave.status===200&&curriculumOptions.gradeSubjects[G1].length===1&&curriculumOptions.gradeSubjects[G1][0]===QURAN&&curriculumOptions.gradeSubjects[G2][0]===MATH);
+    ck('the school overview preserves grade-specific subjects after reload',JSON.stringify((await request('GET','/api/school-admin/overview',{cookie:sac})).json.school.gradeSubjects)===JSON.stringify({[G1]:[QURAN],[G2]:[MATH]}));
+    ck('the server refuses to record a subject not assigned to the student grade', (await request('POST','/api/school-admin/results',{cookie:sac,body:{studentId:R('أحمد علي محمد').id,subject:MATH,term:'الفصل الأول',examType:'المحصلة الأولى',score:1,max:20}})).status===400);
+    const curriculumTranscript=(await request('GET','/api/school-member/transcript',{cookie:stc})).json;
+    const curriculumParent=(await request('GET','/api/parent/transcript',{cookie:pc})).json.students[0];
+    ck('student and guardian transcripts use only the exact same subjects assigned to the student grade',curriculumTranscript.subjects.length===1&&curriculumTranscript.subjects[0]==='القرآن'&&curriculumParent.subjects.length===1&&curriculumParent.subjects[0]==='القرآن');
+    const courseCert=await request('POST','/api/school-admin/certificates',{cookie:sac,body:{studentId:R('أحمد علي محمد').id,grade:G1,academicYear:'2026-2027',kind:'coursework'}});
+    ck('coursework certificate is a distinct certificate and contains only the subjects assigned to the grade',courseCert.status===201&&courseCert.json.certificate.kind==='coursework'&&courseCert.json.certificate.kindLabel==='شهادة أعمال السنة'&&courseCert.json.certificate.subjects.every(x=>x.subject==='القرآن'));
   } catch (e) { console.error('academics check crashed:', e.stack || e, '\n--- server log ---\n' + log); process.exitCode = 1; }
   let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
   console.log(`\n${checks.length - failed}/${checks.length} academics checks passed.`); if (failed) process.exitCode = 1;

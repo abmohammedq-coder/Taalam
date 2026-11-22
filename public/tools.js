@@ -62,8 +62,9 @@
   };
   // ---- transcript ("كشف الدرجات"): subjects as rows, only the exams that exist as columns ----
   function transcriptTable(t, printing) {
+    const ordinal = n => ['الأول','الثاني','الثالث','الرابع','الخامس','السادس','السابع','الثامن','التاسع','العاشر'][Number(n)-1] || (n ? 'المرتبة '+n : '—');
     const bx = printing ? 'border:1px solid #cfd8d2;padding:7px 9px;text-align:right' : 'border-bottom:1px solid #e0e9df;padding:8px 9px;text-align:right', hd = 'background:#f1f5ef;font-weight:700;white-space:normal';
-    const summary = t.hidden ? '' : '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + [['المعدل',t.average==null?'—':fm(t.average)+'٪'],['التقدير',t.gradeLabel||'—'],['الترتيب',t.rank==null?'—':t.rank+' / '+t.rankOutOf]].map(([k,v])=>'<div style="border:1px solid #cfd8d2;border-radius:9px;padding:9px 12px;min-width:110px"><small>'+esc(k)+'</small><br><b>'+esc(v)+'</b></div>').join('') + '</div>';
+    const summary = t.hidden ? '' : '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + [['المعدل',t.average==null?'—':fm(t.average)+'٪'],['التقدير',t.gradeLabel||'—'],['الترتيب',t.rank==null?'—':ordinal(t.rank)+' من '+t.rankOutOf]].map(([k,v])=>'<div style="border:1px solid #cfd8d2;border-radius:9px;padding:9px 12px;min-width:110px"><small>'+esc(k)+'</small><br><b>'+esc(v)+'</b></div>').join('') + '</div>';
     if (!t.rows.length) return summary + '<p class="muted">لا توجد درجات مسجلة بعد.</p>';
     const head = '<tr><th style="' + bx + ';' + hd + '">المادة</th>' + t.columns.map(c => '<th style="' + bx + ';' + hd + '">' + esc(c.label) + '</th>').join('') + '<th style="' + bx + ';' + hd + '">المجموع</th><th style="' + bx + ';' + hd + '">النسبة</th></tr>';
     const body = t.rows.map(r => '<tr><td style="' + bx + ';font-weight:700">' + esc(r.subject) + '</td>' + t.columns.map(c => { const x = r.cells[c.key]; return '<td style="' + bx + '">' + (!x ? '—' : x.hidden ? '<span style="filter:blur(6px);user-select:none">88 / 100</span>' : fm(x.score) + ' / ' + fm(x.max)) + '</td>'; }).join('')
