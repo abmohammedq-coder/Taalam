@@ -80,7 +80,9 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('teacher can edit an existing grade without creating a duplicate', (await request('PATCH', '/api/school-member/teacher/results/' + firstResult.id, { cookie: tc1, body: { score: 19, max: 20 } })).status === 200);
     ck('…but not for a subject that is not his', (await post(tc1, { ...base, subject: MATH, rows: rowsG1 })).status === 403);
     ck('…nor for a grade he does not teach this subject in', (await post(tc1, { ...base, grade: G2, subject: QURAN, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 10 }] })).status === 403);
-    ck('…nor a score above the maximum, nor a student of another grade', (await post(tc1, { ...base, rows: [{ studentId: rowsG1[0].studentId, score: 99 }] })).status === 400 && (await post(tc1, { ...base, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 5 }] })).status === 403);
+    const overTeacher = await post(tc1, { ...base, rows: [{ studentId: rowsG1[0].studentId, score: 99 }] });
+    ck('teacher over-maximum grade is rejected with student name', overTeacher.status === 400 && overTeacher.json.error.includes('أحمد علي محمد') && overTeacher.json.error.includes('20'));
+    ck('teacher cannot grade a student outside the assigned grade', (await post(tc1, { ...base, grade: G2, subject: QURAN, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 5 }] })).status === 403);
     await post(tc1, { ...base, examType: 'الاختبار النصفي', max: 40, rows: rowsG1.map(r => ({ ...r, score: r.score * 2 - 1 })) });
     await post(tc1, { ...base, term: 'الجزء الثاني', rows: rowsG1.map(r => ({ ...r, score: 10 })) });
     const secondExam = await post(tc1, { ...base, term: 'الفصل الثاني', examType: 'الفصل الثاني', max: 30, rows: rowsG1.map(r => ({ ...r, score: 25 })) });
@@ -103,8 +105,11 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('school report computes competition ranking and international-style grade bands', pivot.json.rows.every(x => Number.isInteger(x.rank) && ['A','B','C','D','E','F'].includes(x.gradeLetter) && x.gradeLabel));
     const firstTermReport = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent('كل المواد') + '&term=' + encodeURIComponent('الفصل الأول'), { cookie: sac });
     ck('first-semester report normalizes legacy labels to المحصلة الأولى and الفصل الأول', firstTermReport.status === 200 && firstTermReport.json.columns.some(c => c.examType === 'المحصلة الأولى') && firstTermReport.json.columns.some(c => c.examType === 'الفصل الأول') && firstTermReport.json.subjects.includes('القرآن'));
+    ck('academic options expose a normalized school year range', opts.schoolYear === '2026-2027');
     const defaulted = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 12 } });
     ck('monthly assessment defaults to 20 points when maximum is omitted', defaulted.status === 201 && (await request('GET', '/api/school-admin/results?studentId=' + R('ليلى حسن ناصر').id, { cookie: sac })).json.results.some(x => x.examType === 'الاختبار الشهري' && x.score === 12 && x.max === 20));
+    const overAdmin = await request('POST', '/api/school-admin/results/bulk', { cookie: sac, body: { subject: QURAN, examType: 'المحصلة الأولى', term: 'الفصل الأول', max: 20, academicYear: '2026-2027', rows: [{ studentId: R('أحمد علي محمد').id, score: 22 }] } });
+    ck('school admin bulk grading rejects 22/20 and identifies the student', overAdmin.status === 400 && overAdmin.json.error.includes('أحمد علي محمد') && overAdmin.json.error.includes('22'));
     ck('school admin cannot accidentally record the same assessment twice', (await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', score: 13, max: 20 } })).status === 409);
     const partOne = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', title: 'الجزء الأول', score: 14, max: 20 } });
     const partTwo = await request('POST', '/api/school-admin/results', { cookie: sac, body: { studentId: R('ليلى حسن ناصر').id, subject: QURAN, examType: 'الاختبار الشهري', term: 'اختبار قياس إضافي', title: 'الجزء الثاني', score: 16, max: 20 } });
@@ -119,9 +124,17 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const attRead = await request('GET', '/api/school-admin/attendance?date=2026-11-20&grade=' + encodeURIComponent(G1), { cookie: sac });
     ck('attendance records save and return a daily summary', att.status === 201 && att.json.saved === 2 && attRead.json.summary.present === 1 && attRead.json.summary.absent === 1);
     ck('attendance rejects unknown students and anonymous access', (await request('POST', '/api/school-admin/attendance', { cookie: sac, body: { date: '2026-11-20', grade: G1, rows: [{ studentId: 'not-a-student', status: 'absent' }] } })).status === 400 && (await request('GET', '/api/school-admin/attendance')).status === 401);
+    // Simulate the legacy production records seen in the screenshot: the start year was stored alone.
+    const legacyResultsPath = path.join(dataDir, 'school-results.json');
+    const legacyResults = JSON.parse(fs.readFileSync(legacyResultsPath, 'utf8'));
+    for (const result of legacyResults.results || []) result.academicYear = '2026';
+    fs.writeFileSync(legacyResultsPath, JSON.stringify(legacyResults));
+    const legacyReport = await request('GET', '/api/school-admin/results/report?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent('كل المواد') + '&academicYear=2026-2027', { cookie: sac });
+    ck('grade report matches legacy 2026 records when 2026-2027 is selected', legacyReport.status === 200 && legacyReport.json.schoolYear === '2026-2027' && legacyReport.json.columns.length > 0);
     const cert = await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, grade: G1, academicYear: '2026-2027', kind: 'first_term' } });
     ck('certificate issuance stores a historical snapshot with term results', cert.status === 201 && cert.json.certificate.snapshot === true && cert.json.certificate.subjects.length >= 1 && cert.json.certificate.kind === 'first_term');
     ck('certificate snapshot uses the explicitly selected academic year and grade', cert.json.certificate.academicYear === '2026-2027' && cert.json.certificate.grade === G1);
+    ck('certificate recognizes legacy 2026 grade records as academic year 2026-2027', cert.status === 201 && cert.json.certificate.max > 0);
     ck('certificate API rejects a student outside the selected grade', (await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, grade: G2, academicYear: '2026-2027', kind: 'first_term' } })).status === 400);
     ck('certificate includes class rank, grade letter, descriptive grade and separate signature/seal placeholders', cert.json.certificate.rank >= 1 && cert.json.certificate.rankOutOf >= 1 && ['A','B','C','D','E','F'].includes(cert.json.certificate.gradeLetter) && !!cert.json.certificate.gradeLabel && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministryOfficial') && Object.prototype.hasOwnProperty.call(cert.json.certificate.signatureFields,'ministrySeal') && cert.json.certificate.template === 'yemen-school-report-v3');
     const annual = await request('POST', '/api/school-admin/certificates', { cookie: sac, body: { studentId: R('أحمد علي محمد').id, grade: G1, academicYear: '2026-2027', kind: 'annual' } });
@@ -221,13 +234,32 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const curriculumSave=await request('PUT','/api/school-admin/settings',{cookie:sac,body:{grades:[G1,G2],subjects:[QURAN,MATH],gradeSubjects:{[G1]:[QURAN],[G2]:[MATH]}}});
     const curriculumOptions=(await request('GET','/api/school-admin/academic-options',{cookie:sac})).json;
     ck('school stores an independent subject list for every grade and returns it to the admin UI',curriculumSave.status===200&&curriculumOptions.gradeSubjects[G1].length===1&&curriculumOptions.gradeSubjects[G1][0]===QURAN&&curriculumOptions.gradeSubjects[G2][0]===MATH);
+    const legacyTeacher = (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(x => x.role === 'teacher');
+    ck('legacy teacher member assignment refuses a subject outside the selected grade curriculum', (await request('POST', '/api/school-admin/members/assign', { cookie: sac, body: { id: legacyTeacher?.id, grade: G1, section: 'أ', subjects: [MATH] } })).status === 400);
     ck('the school overview preserves grade-specific subjects after reload',JSON.stringify((await request('GET','/api/school-admin/overview',{cookie:sac})).json.school.gradeSubjects)===JSON.stringify({[G1]:[QURAN],[G2]:[MATH]}));
+    const curriculumBulkDenied=await request('POST','/api/school-admin/results/bulk',{cookie:sac,body:{subject:MATH,term:'الفصل الأول',examType:'المحصلة الأولى',max:20,rows:[{studentId:R('أحمد علي محمد').id,score:12}]}});
+    ck('bulk grade entry rejects a subject outside the selected grade curriculum',curriculumBulkDenied.status===400);
+    const curriculumReport=(await request('GET','/api/school-admin/results/report?grade='+encodeURIComponent(G1)+'&subject='+encodeURIComponent('كل المواد'),{cookie:sac})).json;
+    ck('school result report exposes only the subjects assigned to that grade, including the subject catalog',curriculumReport.subjects.length===1&&curriculumReport.subjects[0]==='القرآن'&&!curriculumReport.columns.some(c=>c.subject===MATH));
     ck('the server refuses to record a subject not assigned to the student grade', (await request('POST','/api/school-admin/results',{cookie:sac,body:{studentId:R('أحمد علي محمد').id,subject:MATH,term:'الفصل الأول',examType:'المحصلة الأولى',score:1,max:20}})).status===400);
+    ck('teacher assignment cannot be created for a subject not assigned to that grade', (await request('POST','/api/school-admin/teachers',{cookie:sac,body:{name:'معلم مادة غير مقررة',email:'unassigned@example.invalid',password:'Teacher-Password-5',assignments:[{grade:G1,subject:MATH}]}})).status===400);
+    ck('online course creation rejects a subject not assigned to the selected grade', (await request('POST','/api/online-learning/courses',{cookie:sac,body:{title:'مقرر غير مسند',grade:G1,subject:MATH,publish:true}})).status===400);
     const curriculumTranscript=(await request('GET','/api/school-member/transcript',{cookie:stc})).json;
     const curriculumParent=(await request('GET','/api/parent/transcript',{cookie:pc})).json.students[0];
     ck('student and guardian transcripts use only the exact same subjects assigned to the student grade',curriculumTranscript.subjects.length===1&&curriculumTranscript.subjects[0]==='القرآن'&&curriculumParent.subjects.length===1&&curriculumParent.subjects[0]==='القرآن');
     const courseCert=await request('POST','/api/school-admin/certificates',{cookie:sac,body:{studentId:R('أحمد علي محمد').id,grade:G1,academicYear:'2026-2027',kind:'coursework'}});
     ck('coursework certificate is a distinct certificate and contains only the subjects assigned to the grade',courseCert.status===201&&courseCert.json.certificate.kind==='coursework'&&courseCert.json.certificate.kindLabel==='شهادة أعمال السنة'&&courseCert.json.certificate.subjects.every(x=>x.subject==='القرآن'));
+    // Regression: a grade with five configured subjects must never inherit the school's global catalog.
+    const G3='الصف الأول الأساسي', G3SUBS=['القرآن الكريم','التربية الإسلامية','اللغة العربية','العلوم','الرياضيات'];
+    const fiveSave=await request('PUT','/api/school-admin/settings',{cookie:sac,body:{grades:[G1,G2,G3],gradeSubjects:{[G1]:[QURAN],[G2]:[MATH],[G3]:G3SUBS},subjects:[...G3SUBS,'الاجتماعيات','اللغة الإنجليزية','الحاسوب','التربية الفنية','التربية البدنية']}});
+    const fiveOptions=(await request('GET','/api/school-admin/academic-options',{cookie:sac})).json;
+    ck('five-subject curriculum is returned exactly for the selected grade, with curriculumConfigured enabled',fiveSave.status===200&&fiveOptions.curriculumConfigured===true&&fiveOptions.gradeSubjects[G3].length===5&&G3SUBS.every(x=>fiveOptions.gradeSubjects[G3].includes(x)));
+    const fiveReport=(await request('GET','/api/school-admin/results/report?grade='+encodeURIComponent(G3)+'&subject='+encodeURIComponent('كل المواد'),{cookie:sac})).json;
+    ck('the grade report subject list contains the five assigned subjects only, not the school-wide catalog',fiveReport.subjects.length===5&&G3SUBS.every(x=>fiveReport.subjects.includes(({ 'القرآن الكريم':'القرآن','التربية الإسلامية':'الإسلامية','اللغة العربية':'العربي' }[x]||x)))&&!fiveReport.subjects.includes('الاجتماعيات')&&!fiveReport.subjects.includes('اللغة الإنجليزية'));
+    const adminUi=fs.readFileSync(path.join(root,'public','school-admin.html'),'utf8');
+    ck('grade dropdown helper never falls back to the global subject catalog after grade-specific curriculum is configured',adminUi.includes('options.curriculumConfigured===true')&&adminUi.includes('return key&&Array.isArray(map[key])?[...new Set(map[key])]:[]'));
+    const learningUi=fs.readFileSync(path.join(root,'public','online-learning.html'),'utf8');
+    ck('online-learning subject dropdown uses the same strict grade-specific curriculum rule',learningUi.includes('curriculumConfigured?(key&&Array.isArray(gradeSubjects[key])?gradeSubjects[key]:[]):subjects'));
   } catch (e) { console.error('academics check crashed:', e.stack || e, '\n--- server log ---\n' + log); process.exitCode = 1; }
   let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
   console.log(`\n${checks.length - failed}/${checks.length} academics checks passed.`); if (failed) process.exitCode = 1;
