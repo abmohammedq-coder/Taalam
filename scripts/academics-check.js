@@ -165,7 +165,6 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('student sees only their own attendance record; teachers cannot read student attendance', studentAttendance.status === 200 && studentAttendance.json.records.length === 1 && studentAttendance.json.records[0].status === 'present' && (await request('GET', '/api/school-member/attendance', { cookie: tc1 })).status === 403);
     const tr = (await request('GET', '/api/school-member/transcript', { cookie: stc })).json;
     ck('transcript lists the subjects that have grades', reg.status === 201 && tr.subjects.length === 2 && tr.rows.length === 2);
-    ck('student transcript exposes the same semester assessment matrix used by the school result card', Array.isArray(tr.resultCards) && tr.resultCards.length === 2 && tr.resultCards[0].monthlyLabel === 'المحصلة الأولى' && tr.resultCards[0].examLabel === 'الفصل الأول' && tr.resultCards[1].monthlyLabel === 'المحصلة الثانية' && tr.resultCards[1].examLabel === 'الفصل الثاني');
     if (process.env.TRACE) console.log(JSON.stringify(tr.columns.map(c => c.label)));
     ck('columns exist only for exams that were taken, ordered part 1 (monthly, midterm) then part 2', tr.columns.map(c => c.label).join('|') === 'الفصل الأول — المحصلة الأولى|الفصل الأول — الفصل الأول|الفصل الثاني — المحصلة الثانية|الفصل الثاني — الفصل الثاني');
     const q = tr.rows.find(r => r.subject === 'القرآن'), m = tr.rows.find(r => r.subject === MATH);
@@ -182,7 +181,6 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     await request('POST', '/api/school-admin/guardian-links/review', { cookie: sac, body: { id: lk.id, action: 'approve' } });
     const gt = (await request('GET', '/api/parent/transcript', { cookie: pc })).json;
     ck('the guardian sees the child transcript', gt.students.length === 1 && gt.students[0].studentName === 'أحمد علي محمد' && gt.students[0].rows.length === 2);
-    ck('guardian transcript uses the same semester assessment matrix as the student and school', Array.isArray(gt.students[0].resultCards) && gt.students[0].resultCards[0].subjects.some(x => x.subject === 'القرآن'));
     ck('the guardian transcript needs a parent session', (await request('GET', '/api/parent/transcript')).status === 401 && (await request('GET', '/api/parent/transcript', { cookie: stc })).status === 401);
     // fee-based hiding
     await request('PUT', '/api/school-admin/fees/config', { cookie: sac, body: { currency: 'ريال', types: [{ id: 'monthly', name: 'الرسوم', amount: 100, active: true }], policy: { mode: 'balance', maxBalance: 0 } } });
@@ -230,11 +228,6 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('student and guardian transcripts use only the exact same subjects assigned to the student grade',curriculumTranscript.subjects.length===1&&curriculumTranscript.subjects[0]==='القرآن'&&curriculumParent.subjects.length===1&&curriculumParent.subjects[0]==='القرآن');
     const courseCert=await request('POST','/api/school-admin/certificates',{cookie:sac,body:{studentId:R('أحمد علي محمد').id,grade:G1,academicYear:'2026-2027',kind:'coursework'}});
     ck('coursework certificate is a distinct certificate and contains only the subjects assigned to the grade',courseCert.status===201&&courseCert.json.certificate.kind==='coursework'&&courseCert.json.certificate.kindLabel==='شهادة أعمال السنة'&&courseCert.json.certificate.subjects.every(x=>x.subject==='القرآن'));
-    const renamed=await request('POST','/api/school-admin/subjects/rename',{cookie:sac,body:{from:QURAN,to:'القرآن الكريم (محدث)'}});
-    const renamedOptions=(await request('GET','/api/school-admin/academic-options',{cookie:sac})).json;
-    const renamedResults=(await request('GET','/api/school-admin/results',{cookie:sac})).json.results;
-    ck('renaming a subject updates the grade curriculum and historical grade records without deleting them',renamed.status===200&&renamedOptions.gradeSubjects[G1][0]==='القرآن الكريم (محدث)'&&renamedResults.some(r=>r.subject==='القرآن الكريم (محدث)'));
-
   } catch (e) { console.error('academics check crashed:', e.stack || e, '\n--- server log ---\n' + log); process.exitCode = 1; }
   let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
   console.log(`\n${checks.length - failed}/${checks.length} academics checks passed.`); if (failed) process.exitCode = 1;

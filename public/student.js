@@ -326,7 +326,7 @@
   // "my school / my grades": only for a student whose e-mail is linked to his name in the school list
   async function openSchoolGate() {
     let me = null; try { me = await api('/api/school-member/me'); } catch { /* offline */ }
-    if (me && me.authenticated) { location.href = me.member && me.member.role === 'teacher' ? '/teacher/' : '/student/school'; return; }
+    if (me && me.authenticated) { const role = me.member && me.member.role; if (role === 'student') { location.replace('/student/school'); return; } if (role === 'teacher') { location.replace('/teacher/school'); return; } openSheet('مدرستي', () => setBody(errorBox('هذا الحساب ليس حساب طالب. ادخل إلى بوابة حسابك الصحيحة، ولن نحولك إلى تسجيل دخول إدارة المدرسة.', back))); return; }
     openSheet('درجاتي ونتائجي', () => {
       setBody(el('div', { class: 'center', style: 'flex:1;display:flex;flex-direction:column;gap:14px;justify-content:center' },
         el('div', { style: 'font-size:56px', text: '🔒' }),

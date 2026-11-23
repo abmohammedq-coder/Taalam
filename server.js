@@ -92,7 +92,6 @@ function schoolPermissionFor(req){
   if(p==='/api/school-admin/settings'||p==='/api/school-admin/logo')return m==='GET'?'settings.read':'settings.write';
   if(p.startsWith('/api/school-admin/posts'))return m==='GET'?'posts.read':'posts.write';
   if(p.startsWith('/api/school-admin/teachers'))return m==='GET'?'teachers.read':'teachers.write';
-  if(p.startsWith('/api/school-admin/subjects'))return m==='GET'?'academic.read':'academic.write';
   if(p.startsWith('/api/school-admin/academic-options'))return 'academic.read';
   if(p.startsWith('/api/school-admin/notes'))return m==='GET'?'academic.read':'academic.write';
   if(/\/fees(?:\/|$)/.test(p)||p.includes('/feesettings'))return m==='GET'?'finance.read':'finance.write';
@@ -555,7 +554,7 @@ const bookjobs=require('./lib/bookjobs.js')({dataDir,uploadDir,execFileAsync,rea
   getBook:id=>(readData().books||[]).find(b=>b.id===id)||null,
   updateBook:(id,fn)=>{const db=readData();const b=(db.books||[]).find(x=>x.id===id);if(!b)return false;fn(b);writeFileAtomic(dataFile,JSON.stringify(db,null,2),{mode:0o600});return true;},
   prepareBookText:learn.prepareBookText,normalize:normalizeCurriculumText,inferOutline,emit:(a,b)=>{if(extrasRef)extrasRef.emit(a,b)},afterAssemble:id=>extrasRef?extrasRef.suggestForBook(id):null});
-const extras = require('./lib/extras.js')({bookjobs,dataDir,uploadDir,version:APP_VERSION,send,readBody,readJsonFile,saveJsonFile,rateLimit,audit,learn,clientIp,execFileAsync,preparedBook,readDataCached,readSchools,schoolsFile,scrypt,revokeSchoolAdminSessions:id=>{for(const [t,x] of schoolSessions)if(x.schoolAdminId===id)schoolSessions.delete(t);saveSchoolSessions();},readSchoolMembers,saveSchoolMembers,readSchoolPosts,saveSchoolPosts:d=>saveJsonFile(schoolPostsFile,d),readGuardianLinks,revokeMemberSessions:id=>{for(const [t,x] of schoolMemberSessions)if(x.memberId===id)schoolMemberSessions.delete(t);saveSchoolMemberSessions();},sessionAdmin,sessionSchoolAdmin,sessionSchoolMember,sessionParent,requireSchoolAdmin,requireSchoolMember});
+const extras = require('./lib/extras.js')({bookjobs,dataDir,uploadDir,version:APP_VERSION,send,readBody,readJsonFile,saveJsonFile,rateLimit,audit,learn,clientIp,execFileAsync,preparedBook,readDataCached,readSchools,schoolsFile,scrypt,revokeSchoolAdminSessions:id=>{for(const [t,x] of schoolSessions)if(x.schoolAdminId===id)schoolSessions.delete(t);saveSchoolSessions();},readSchoolMembers,saveSchoolMembers,readGuardianLinks,revokeMemberSessions:id=>{for(const [t,x] of schoolMemberSessions)if(x.memberId===id)schoolMemberSessions.delete(t);saveSchoolMemberSessions();},sessionAdmin,sessionSchoolAdmin,sessionSchoolMember,sessionParent,requireSchoolAdmin,requireSchoolMember});
 extrasRef=extras;
 const server = http.createServer(async (req,res)=>{
   const pathname=decodeURIComponent((req.url||'/').split('?')[0]);

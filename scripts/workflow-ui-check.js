@@ -1,4 +1,4 @@
-// v2.94.4: checks for compact attendance rows, grade-first certificates, and academic-year entry.
+// v2.94.6: checks for compact attendance rows, grade-first certificates, and academic-year entry.
 'use strict';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -23,7 +23,7 @@ ck('results menu opens separate actions for entry, latest results, and grade rep
 ck('grade report pivots to one row per student and one column per subject without rank, letter bands, or score denominators',school.includes('function reportPivot()')&&school.includes('<th>اسم الطالب</th>')&&school.includes('<th>المجموع</th>')&&school.includes('reportSubjectLabel(c.subject||source)')&&!school.includes("gradeLetter||'—'")&&!school.includes(' / ${esc(c.max)}'));
 ck('individual result is a separate action and prints one independent result per student using the school model',school.includes('id="printResultCards"')&&school.includes('id="printResultCards">النتيجة</button>')&&school.includes('const subjects=[...new Set((reportData.subjects?.length?reportData.subjects:cols.map(c=>c.subject))')&&school.includes('.slip:nth-of-type(2n){break-after:page}')&&school.includes('المحصلة الأولى')&&school.includes('class="note"')&&!school.includes('من ${ep(v.max)}'));
 ck('birth date can be edited by keyboard and selected from the calendar',school.includes('data-c="birth" type="text" inputmode="numeric"')&&school.includes('data-date-picker type="date"')&&school.includes('normalizeBirthInput'));
-ck('release and app caches use v2.94.4',read('package.json').includes('2.94.4')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.94.4'")));
+ck('release and app caches use v2.94.7',read('package.json').includes('2.94.7')&&['public/sw.js','public/admin/sw.js','public/school-admin/sw.js'].every(f=>read(f).includes("VERSION = '2.94.7'")));
 ck('school-admin print templates do not inject a script tag inside an active script block', !read('public/school-admin.html').includes('<script src="/exit-confirm.js"></script></html>`'));
 ck('result report rows do not repeat rank or grade columns', !read('public/school-admin.html').includes("<td>${r.rank??'—'}</td><td>${esc(r.gradeLabel||'—')}"));
 ck('duplicate assessment identity prevents standardized semester duplicates while preserving legacy titled assessments', read('lib/extras.js').includes('const standard=') && read('lib/extras.js').includes("String(a.title||'')===title") && read('lib/extras.js').includes('canonicalAssessment(a.examType,a.term)===examType'));
@@ -31,10 +31,29 @@ ck('individual result print supports one selected student or all students and re
 ck('result card heading follows the selected term and displays ordinal rank words',school.includes("second?'الثاني':'الأول'")&&school.includes('ordinalArabic(r.rank)'));
 ck('grade-specific curriculum editor and validation are wired through the school settings',school.includes('data-grade-subject')&&school.includes('b.gradeSubjects=curriculum.gradeSubjects')&&read('lib/extras.js').includes('هذه المادة غير مقررة لهذا الصف وفق خطة المدرسة'));
 ck('grade curriculum uses a dropdown instead of checkbox lists',school.includes('data-grade-subject-select')&&!school.includes('data-grade-subject=')&&school.includes('— اختر مادة —'));
+ck('grade subject dropdown is prefilled from the national subject catalog plus school-specific subjects',school.includes('const DEFAULT_SUBJECTS=')&&school.includes('[...DEFAULT_SUBJECTS,...curriculum.subjects]')&&school.includes('const available=subjectCatalog.filter(sub=>!assigned.includes(sub))'));
+ck('choosing a catalog subject adds it to the school catalog and only the selected grade curriculum',school.includes('if(!curriculum.subjects.includes(value))curriculum.subjects.push(value)')&&school.includes('curriculum.gradeSubjects[grade].push(value)'));
+ck('a new subject is created only through the Other option, not a separate manual add-all form',!school.includes('id="newSubject"')&&!school.includes('id="addSubject"')&&school.includes('value="__other__"')&&school.includes('data-save-other-subject'));
 ck('each grade can add a custom subject from the other option and save it to the school-wide subject list',school.includes('value=\"__other__\"')&&school.includes('data-other-subject-input')&&school.includes('data-save-other-subject')&&school.includes('curriculum.subjects.push(canonical)'));
 ck('selected subjects appear as removable grade-specific chips',school.includes('data-remove-grade-subject')&&school.includes('curriculum.gradeSubjects[grade].push(canonical)'));
 ck('coursework certificate is separate from semester and annual certificates',school.includes('value="coursework">شهادة أعمال السنة')&&read('lib/extras.js').includes("kind==='coursework'"));
 ck('guardian grade scores use the shared transcript instead of a second score-pill layout',read('public/guardian.html').includes('كشف الدرجات الموحد أعلاه')&&!read('public/guardian.html').includes('نتائج الاختبارات</h4>'));
+const studentPortal = read('public/student.js');
+const certMarkup = read('public/school-admin.html');
+ck('student school shortcut routes students only to student portal and teachers to teacher portal', studentPortal.includes("if (role === 'student') { location.replace('/student/school')") && studentPortal.includes("if (role === 'teacher') { location.replace('/teacher/school')") && !studentPortal.includes("location.href = me.member && me.member.role === 'teacher' ? '/school'"));
+ck('student school gate does not redirect to school administration login', studentPortal.includes('هذا الحساب ليس حساب طالب') && !studentPortal.includes("location.replace('/school-admin')"));
+ck('certificate print uses the selected Yemen school certificate layout with grouped semester columns and approval blocks', certMarkup.includes('Republic of Yemen') && certMarkup.includes('الفصل الدراسي الأول') && certMarkup.includes('الفصل الدراسي الثاني') && certMarkup.includes('اعتماد إدارة المدرسة') && certMarkup.includes('background:#d4e0e4'));
+
+const adminHtml=read('public/school-admin.html'), teacherHtml=read('public/school.html');
+ck('timetable period is selected from Arabic ordinal dropdown, not typed as a number', /id="schPeriod"/.test(school) && /value="1">الأولى/.test(school) && !/id="schPeriod" type="number/.test(school));
+ck('teacher and student timetable displays ordinal lesson names instead of numeric periods', read('public/school.html').includes("['الأولى','الثانية','الثالثة','الرابعة','الخامسة'") && read('public/school.html').includes('Number(x.period)-1')); 
+ck('timetable times are keyboard-editable text fields with HH:MM validation', /id="schStart" type="text" inputmode="text/.test(school) && /id="schEnd" type="text" inputmode="text/.test(school));
+ck('timetable subject list is limited to the selected grade curriculum and offers Other', school.includes("o.gradeSubjects?.[$('#schGrade').value]") && /value="__other__">أخرى/.test(school));
+ck('school admin latest grades render as an Excel-style pivot: one row per student, dynamic assessment columns, editable cells and latest-grade highlight', /recent-results-table/.test(adminHtml) && /grade-matrix/.test(adminHtml) && /grade-matrix-new/.test(adminHtml) && /orderedCols\.map/.test(adminHtml) && /row\.cells\.get/.test(adminHtml));
+ck('teacher latest grades render as an Excel-style pivot for the assigned subject: one row per student, assessment columns and latest-grade highlight', /teacher-recent-table/.test(teacherHtml) && /grade-matrix/.test(teacherHtml) && /grade-matrix-new/.test(teacherHtml) && /orderedCols\.map/.test(teacherHtml) && /row\.cells\.get/.test(teacherHtml));
+ck('latest-grade feeds support large school rosters and keep distinct assessment titles and academic years as separate columns', /slice\(0, 20000\)/.test(read('lib/extras.js')) && /title: r\.title \|\| ''/.test(read('lib/extras.js')) && /r\.academicYear/.test(adminHtml) && /r\.academicYear/.test(teacherHtml));
+ck('certificate error explains whether grades are missing or belong to another academic year', read('lib/extras.js').includes('الأعوام الموجودة في السجل') && read('lib/extras.js').includes('الأنواع المسجلة')); 
+
 for(const [n,ok] of checks)console.log((ok?'PASS ':'FAIL ')+n);
 console.log(`\n${checks.filter(x=>x[1]).length}/${checks.length} workflow UI checks passed.`);
 if(checks.some(x=>!x[1]))process.exitCode=1;
