@@ -20,6 +20,9 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
   try {
     for (let i = 0; i < 80; i++) { if (child.exitCode !== null) throw new Error('server exited: ' + log); try { if ((await request('GET', '/api/teacher/status')).status === 200) break; } catch { /* starting */ } await wait(150); }
     const ac = ck0(await request('POST', '/api/admin/login', { body: { email: 'owner@example.invalid', password: 'Owner-Password-For-Academics-123' } }));
+    const auditFirst = await request('GET', '/api/admin/audit?page=1&limit=5', { cookie: ac });
+    const auditFiltered = await request('GET', '/api/admin/audit?action=admin.login&limit=10', { cookie: ac });
+    ck('platform audit log supports bounded pagination, action filters and a valid tamper-evident hash chain', auditFirst.status === 200 && Array.isArray(auditFirst.json.events) && auditFirst.json.events.length <= 5 && Number.isInteger(auditFirst.json.total) && auditFiltered.status === 200 && auditFiltered.json.events.some(e => e.action === 'admin.login') && auditFirst.json.integrity?.valid === true);
     await request('POST', '/api/admin/schools', { cookie: ac, body: { name: 'مدرسة الكشوف', adminName: 'المدير', adminEmail: 'head@example.invalid', adminPassword: 'Head-Password-123', deputyName: 'الوكيل', deputyEmail: 'dep@example.invalid', deputyPassword: 'Deputy-Password-123', grades: [G1, G2], schoolYear: '2026-2027' } });
     const sid = (await request('GET', '/api/admin/schools', { cookie: ac })).json.schools[0].id;
     const sac = ck0(await request('POST', '/api/school-admin/login', { body: { email: 'head@example.invalid', password: 'Head-Password-123' } }));
@@ -44,6 +47,7 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const rejectLink = await request('POST', '/api/school-admin/members/review', { cookie: sac, body: { id: pending2?.id, action: 'reject' } });
     ck('school admin can reject a pending student request without requiring a roster selection', studentReq2.status === 201 && rejectLink.status === 200 && rejectLink.json.status === 'rejected' && (await request('GET', '/api/school-admin/members', { cookie: sac })).json.members.find(m => m.id === pending2.id)?.status === 'rejected');
     const schoolUi = fs.readFileSync(path.join(root, 'public', 'school-admin.html'), 'utf8');
+    ck('existing collective grade sheet keeps its layout and marks each semester group red only below half of its own maximum', schoolUi.includes('class="grade-ledger"') && schoolUi.includes('class="fail-mark"') && schoolUi.includes('Number(v.firstTotal.score)<Number(v.firstTotal.max)/2') && schoolUi.includes('Number(v.secondTotal.score)<Number(v.secondTotal.max)/2'));
     ck('school request buttons parse the full request ID and action before sending the review request', schoolUi.includes("String(b.dataset.schoolRequest||'').split('|')") && !schoolUi.includes('const [id,action]=b.dataset.schoolRequest,'));
     ck('school result card uses the Yemen-style bordered result summary and all-subject report', schoolUi.includes('class="note"') && schoolUi.includes('اختر «كل المواد»') && schoolUi.includes('النتيجة النهائية للفصل الدراسي'));
 
@@ -75,9 +79,14 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const base = { grade: G1, subject: QURAN, examType: 'الاختبار الشهري', term: 'الجزء الأول', max: 20 };
     const g1 = await post(tc1, { ...base, rows: rowsG1 });
     ck('a teacher records grades for his own subject and grade', g1.status === 201 && g1.json.added === 3);
+    const scopedAudit = await request('GET', '/api/admin/audit?schoolId=' + encodeURIComponent(sid) + '&action=teacher.results.add&limit=20', { cookie: ac });
+    const gradeAudit = scopedAudit.json?.events?.find(e => e.action === 'teacher.results.add');
+    ck('platform audit can filter by school and retain individual grade values', scopedAudit.status === 200 && gradeAudit?.details?.schoolId === sid && Array.isArray(gradeAudit.details.grades) && gradeAudit.details.grades.length === 3);
     ck('duplicate assessment for the same student is rejected', (await post(tc1, { ...base, rows: [rowsG1[0]] })).status === 409);
     const firstResult = (await request('GET', '/api/school-member/teacher/results?grade=' + encodeURIComponent(G1) + '&subject=' + encodeURIComponent(QURAN), { cookie: tc1 })).json.results.find(r => r.studentId === rowsG1[0].studentId);
     ck('teacher can edit an existing grade without creating a duplicate', (await request('PATCH', '/api/school-member/teacher/results/' + firstResult.id, { cookie: tc1, body: { score: 19, max: 20 } })).status === 200);
+    const gradeChangeAudit = await request('GET', '/api/admin/audit?schoolId=' + encodeURIComponent(sid) + '&action=teacher.results.update&limit=20', { cookie: ac });
+    ck('grade changes preserve the previous and new values with the student and subject', gradeChangeAudit.status === 200 && gradeChangeAudit.json.events.some(e => e.details?.previous?.score === firstResult.score && e.details?.newValue?.score === 19 && e.details?.studentId === firstResult.studentId));
     ck('…but not for a subject that is not his', (await post(tc1, { ...base, subject: MATH, rows: rowsG1 })).status === 403);
     ck('…nor for a grade he does not teach this subject in', (await post(tc1, { ...base, grade: G2, subject: QURAN, rows: [{ studentId: R('ليلى حسن ناصر').id, score: 10 }] })).status === 403);
     const overTeacher = await post(tc1, { ...base, rows: [{ studentId: rowsG1[0].studentId, score: 99 }] });
@@ -141,6 +150,8 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     const quranAnnual = annual.json?.certificate?.subjects?.find(x => x.subject === 'القرآن');
     ck('annual certificate snapshot keeps first and second semester components separate', annual.status === 201 && quranAnnual?.firstMonthly?.score === 19 && quranAnnual?.firstExam?.score > 0 && quranAnnual?.secondMonthly?.score === 10 && quranAnnual?.secondExam?.score === 25 && quranAnnual?.annualTotal?.max === (quranAnnual.firstMonthly.max + quranAnnual.firstExam.max + quranAnnual.secondMonthly.max + quranAnnual.secondExam.max));
     ck('school certificate archive is private to the school admin', (await request('GET', '/api/school-admin/certificates', { cookie: sac })).json.certificates.length === 2 && (await request('GET', '/api/school-admin/certificates')).status === 401);
+    const platformCerts = await request('GET', '/api/admin/certificates?schoolId=' + encodeURIComponent(sid) + '&limit=10', { cookie: ac });
+    ck('platform owner can review the certificate archive across schools with school filtering', platformCerts.status === 200 && platformCerts.json.total === 2 && platformCerts.json.certificates.every(c => c.schoolId === sid));
 
     // ---------- student transcript ----------
     const reg = await request('POST', '/api/student/register', { body: { schoolId: sid, name: 'أحمد علي محمد', grade: G1, section: 'أ', email: 'ahmad@example.invalid', password: 'Student-Password-1' } });
@@ -260,6 +271,7 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('grade dropdown helper never falls back to the global subject catalog after grade-specific curriculum is configured',adminUi.includes('options.curriculumConfigured===true')&&adminUi.includes('return key&&Array.isArray(map[key])?[...new Set(map[key])]:[]'));
     const learningUi=fs.readFileSync(path.join(root,'public','online-learning.html'),'utf8');
     ck('online-learning subject dropdown uses the same strict grade-specific curriculum rule',learningUi.includes('curriculumConfigured?(key&&Array.isArray(gradeSubjects[key])?gradeSubjects[key]:[]):subjects'));
+    const auditPath=path.join(dataDir,'audit-log.json');const auditRowsOnDisk=JSON.parse(fs.readFileSync(auditPath,'utf8'));if(auditRowsOnDisk.length)auditRowsOnDisk[0].action='tampered.event';fs.writeFileSync(auditPath,JSON.stringify(auditRowsOnDisk));await request('POST','/api/admin/login',{body:{email:'owner@example.invalid',password:'Owner-Password-For-Academics-123'}});const tamperCheck=await request('GET','/api/admin/audit?limit=5',{cookie:ac});ck('platform audit flags an altered event as a broken integrity chain even after a new event is appended',tamperCheck.status===200&&tamperCheck.json.integrity?.valid===false);
   } catch (e) { console.error('academics check crashed:', e.stack || e, '\n--- server log ---\n' + log); process.exitCode = 1; }
   let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
   console.log(`\n${checks.length - failed}/${checks.length} academics checks passed.`); if (failed) process.exitCode = 1;

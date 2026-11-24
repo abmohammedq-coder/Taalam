@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const server=fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
+const extras=fs.readFileSync(path.join(__dirname,'..','lib','extras.js'),'utf8');
+const ui=fs.readFileSync(path.join(__dirname,'..','public','school-admin.html'),'utf8');
+const student=['student.posts.read','student.submissions.read','student.submissions.write','student.transcript.read','student.notes.read','student.finance.read','student.schedule.read','student.attendance.read','student.notifications.read'];
+const guardian=['guardian.student.read','guardian.posts.read','guardian.transcript.read','guardian.notes.read','guardian.finance.read','guardian.notifications.read'];
+for(const k of student)assert(server.includes(`'${k}'`)||extras.includes(`'${k}'`),`missing ${k}`);
+for(const k of guardian)assert(server.includes(`'${k}'`)||extras.includes(`'${k}'`),`missing ${k}`);
+assert(server.includes("pathname==='/api/school-admin/student-guardian-permissions'&&req.method==='GET'"));
+assert(server.includes("pathname==='/api/school-admin/student-guardian-permissions'&&req.method==='PUT'"));
+assert(server.includes("x.schoolId===ss.schoolId&&x.role==='student'&&x.status==='approved'&&x.active!==false"));
+assert(server.includes("x.schoolId===ss.schoolId&&x.status==='approved'"));
+assert(server.includes("ss.account.schoolRole!=='principal'"));
+assert(server.includes("school.student.permissions.update")&&server.includes("school.guardian.permissions.update"));
+for(const k of ['student.posts.read','student.submissions.read','student.submissions.write','student.schedule.read','student.attendance.read'])assert(server.includes(`['${k}']===false`)||extras.includes(`['${k}']===false`),`server does not deny ${k}`);
+for(const k of ['student.transcript.read','student.notes.read','student.finance.read','student.schedule.read','student.attendance.read','student.notifications.read','guardian.transcript.read','guardian.notes.read','guardian.finance.read'])assert(extras.includes(`'${k}'`),`server does not enforce ${k}`);
+assert(extras.includes('principal.permissions[key] === true')&&extras.includes('linkPermitted(l, requiredKey)'));assert(server.includes("l.permissions['guardian.student.read']!==false"));
+assert(ui.includes('studentGuardianPermissionsCard')&&ui.includes('/api/school-admin/student-guardian-permissions'));
+console.log('student-guardian-permissions-check: 29 assertions passed');

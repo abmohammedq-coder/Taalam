@@ -45,7 +45,7 @@ c.save()
   const dataDir = path.join(temp, 'data'); fs.mkdirSync(path.join(dataDir, 'curriculum-pdfs'), { recursive: true });
   const checks = []; const ck = (label, ok) => checks.push([label, !!ok]);
   let child = null, port = 0;
-  const baseEnv = { ...process.env, DATA_DIR: dataDir, NODE_PATH: path.join(temp, 'modules'), ADMIN_EMAIL: 'owner@example.invalid', ADMIN_PASSWORD: 'Owner-Password-For-Jobs-Check-123', NODE_ENV: 'test', OCR_LANGS: 'eng', MAX_PDF_UPLOAD_MB: '2' };
+  const baseEnv = { ...process.env, DATA_DIR: dataDir, NODE_PATH: path.join(temp, 'modules'), ADMIN_EMAIL: 'owner@example.invalid', ADMIN_PASSWORD: 'Owner-Password-For-Jobs-Check-123', NODE_ENV: 'test', OCR_LANGS: 'eng', OCR_DPI: '72', BOOK_JOBS_CONCURRENCY: '4', MAX_PDF_UPLOAD_MB: '2' };
   delete baseEnv.AI_API_KEY;
   async function startServer(extra = {}) {
     port = 33000 + Math.floor(Math.random() * 20000);

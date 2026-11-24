@@ -19,7 +19,8 @@ for (const sw of ['sw.js', 'admin/sw.js', 'school-admin/sw.js']) ck('service wor
 // platform admin: five sections, each with a panel; old tabs gone
 const tabs = [...admin.matchAll(/<button[^>]*data-tab="([^"]+)"/g)].map(m => m[1]);
 const panels = new Set([...admin.matchAll(/data-panel="([^"]+)"/g)].flatMap(m => m[1].split(/\s+/)));
-ck('platform admin has the five sections', JSON.stringify(tabs) === JSON.stringify(['overview', 'books', 'schools', 'admins', 'system']));
+ck('platform admin has overview, books, schools, admins, system, and central activity sections', JSON.stringify(tabs) === JSON.stringify(['overview', 'books', 'schools', 'admins', 'system', 'activity']));
+ck('platform admin central activity view exposes actor, action, date, search, and paginated event details', pub('admin.html').includes('id="auditActor"') && pub('admin.html').includes('id="auditAction"') && pub('admin.html').includes('id="auditFrom"') && pub('admin.html').includes('id="auditNext"') && pub('admin.html').includes('/api/admin/audit?'));
 ck('every platform-admin tab has a panel to show', tabs.every(t => panels.has(t)));
 const hubSel = [...admin.slice(admin.indexOf('function buildHubs')).matchAll(/(?:section:|nodes:\[)'(#[A-Za-z0-9_-]+)'/g)].map(m => m[1].slice(1));
 ck('every tile opens something that exists (' + hubSel.length + ' tiles)', hubSel.length >= 12 && hubSel.every(i => aIds.has(i)));
