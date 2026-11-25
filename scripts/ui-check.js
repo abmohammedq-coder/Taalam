@@ -84,5 +84,8 @@ ck('school admin: date fields support keyboard input and a calendar picker', sad
 ck('school admin: certificate student list is initialized and filtered by selected grade', sadm.includes('window.schoolCertificateStudents') && sadm.includes('filter(x=>x.grade===grade)'));
 ck('school admin: internal JavaScript exceptions are translated to Arabic status text', sadm.includes('حدث خطأ داخلي أثناء تنفيذ العملية'));
 ck('school admin: dashboard loader no longer writes to the removed pending-preview element', !sadm.includes("$('#pendingPreview')") && !sadm.includes('id="pendingPreview"'));
+const studentPortal = pub('student-school.html');
+ck('student portal shows separate new-account and login choices before either form', studentPortal.includes('id="studentAuthChoices"') && studentPortal.includes('id="showStudentRegister"') && studentPortal.includes('id="showStudentLogin"') && studentPortal.includes('<form id="register" class="hidden">') && studentPortal.includes('<form id="login" class="hidden">'));
+ck('student login exposes only email and password after selecting login, with a back action', studentPortal.includes('<form id="login" class="hidden"><h3>دخول حساب معتمد</h3><label>البريد الإلكتروني<input name="email" type="email"') && studentPortal.includes('<label>كلمة المرور<input name="password" type="password"') && studentPortal.includes('data-auth-back') && studentPortal.includes("$('#showStudentLogin').onclick"));
 let failed = 0; for (const [l, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + l); if (!ok) failed++; }
 console.log(`\n${checks.length - failed}/${checks.length} UI wiring checks passed.`); if (failed) process.exitCode = 1;

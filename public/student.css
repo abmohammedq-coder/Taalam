@@ -182,3 +182,6 @@ button.itm:active{transform:scale(.9)}
 .sim-title{margin:4px 0;color:var(--green)}.rd-exps{display:flex;flex-direction:column;gap:8px}.rd-more summary{cursor:pointer;font-weight:700;padding:8px 2px}
 
 .tab-title{margin:0 0 10px;color:var(--green,#173f36)}
+
+/* Scheduled awareness space: inline and non-blocking by design. */
+.awareness-space{max-width:760px;margin:14px auto 18px;padding:12px 14px;border:1px solid var(--line,#d9e5dc);border-inline-start:5px solid var(--green,#176b50);border-radius:16px;background:var(--card,#fff);box-shadow:0 5px 18px #173d2c0a}.awareness-mark{font-weight:800;color:var(--green,#176b50);margin-bottom:8px}.awareness-item{padding:8px 0;border-top:1px solid var(--line,#e5ece7)}.awareness-item:first-of-type{border-top:0}.awareness-item b{display:block;margin-bottom:4px}.awareness-item p{margin:0;line-height:1.8;color:var(--ink,#20352d);white-space:pre-wrap}@media(prefers-color-scheme:dark){.awareness-space{background:#17231f;border-color:#34483f}.awareness-item p{color:#e7eee9}}

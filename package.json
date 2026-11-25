@@ -1,11 +1,11 @@
 {
   "name": "taallam-ma-alhaitham",
-  "version": "2.95.13",
+  "version": "2.95.23",
   "private": true,
   "description": "منصة تعليمية عربية مع متابعة تعليمية تفاعلية واختبارات تكاملية",
   "scripts": {
     "start": "node server.js",
-    "test": "node scripts/online-learning-check.js && node scripts/online-learning-ui-check.js && node scripts/school-permissions-check.js && node scripts/member-permissions-check.js && node scripts/student-guardian-permissions-check.js && node scripts/voice-check.js && node scripts/learn-check.js && node scripts/pdf-smoke-check.js && node scripts/http-smoke-check.js && node scripts/learn-api-check.js && node scripts/features-check.js && node scripts/bookjobs-check.js && node scripts/sims-check.js && node scripts/advanced-check.js && node scripts/ui-check.js && node scripts/workflow-ui-check.js && node scripts/academics-check.js"
+    "test": "node scripts/archive-check.js && node scripts/meeting-check.js && node scripts/awareness-check.js && node scripts/online-learning-check.js && node scripts/online-learning-ui-check.js && node scripts/school-permissions-check.js && node scripts/member-permissions-check.js && node scripts/student-guardian-permissions-check.js && node scripts/voice-check.js && node scripts/learn-check.js && node scripts/pdf-smoke-check.js && node scripts/http-smoke-check.js && node scripts/learn-api-check.js && node scripts/features-check.js && node scripts/bookjobs-check.js && node scripts/sims-check.js && node scripts/advanced-check.js && node scripts/ui-check.js && node scripts/workflow-ui-check.js && node scripts/academics-check.js && node scripts/transcript-fail-circle-check.js"
   },
   "engines": {
     "node": ">=18"

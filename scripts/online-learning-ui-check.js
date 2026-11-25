@@ -15,7 +15,7 @@ const tests=[
  ['student, teacher and school admin portals link to online learning',fs.readFileSync('public/student-school.html','utf8').includes('/online-learning/')&&fs.readFileSync('public/teacher.html','utf8').includes('/online-learning/')&&fs.readFileSync('public/school-admin.html','utf8').includes('/online-learning/')],
  ['teacher and school admin have an explicit start-audio-video control',page.includes('بدء الحصة بالصوت والصورة')&&page.includes('فتح غرفة الحصة')],
  ['students have a clear join-audio-video control and device permission guidance',page.includes('دخول الحصة بالصوت والصورة')&&page.includes('الميكروفون والكاميرا')],
- ['teacher start opens the meeting window during the user gesture to avoid popup blocking',page.includes("const meetingWindow=action==='start'?window.open('about:blank','_blank'):null")&&page.includes('joinSession(id,meetingWindow)')],
+ ['teacher start opens the embedded Jitsi meeting without popup dependency',page.includes('TAALLAM_MEETING.open(d)')&&page.includes('id="meetingShell"')&&page.includes('/meeting.js')],
 ];
 for(const [name,ok] of tests){console.log((ok?'PASS ':'FAIL ')+name);assert.ok(ok,name)}
 console.log(`${tests.length}/${tests.length} online-learning UI checks passed.`);

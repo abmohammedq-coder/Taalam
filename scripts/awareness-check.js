@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const root=path.resolve(__dirname,'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const server=read('server.js'),admin=read('public/admin.html'),platform=read('public/platform.js'),home=read('public/index.html'),css=read('public/student.css');
+const checks=[];const ck=(n,v)=>checks.push([n,!!v]);
+ck('platform settings default to an empty awareness schedule without breaking legacy settings',server.includes("awarenessItems:[]")&&server.includes("Array.isArray(old.awarenessItems)?old.awarenessItems:[]"));
+ck('only the platform owner can edit global awareness items',server.includes("ss.role!=='superadmin'")&&server.includes("awarenessItems:Array.isArray(b.awarenessItems)"));
+ck('awareness items are bounded, sanitized, scheduled and sorted by priority',server.includes('slice(0,50).map(x=>({id:String(x.id||crypto.randomUUID())')&&server.includes('startsAt:String(x.startsAt||\'\').slice(0,40)')&&server.includes("sort((a,b)=>(b.priority||0)-(a.priority||0))"));
+ck('admin form supports multiple awareness messages and schedule dates',admin.includes('name="awarenessItemsText"')&&admin.includes('بداية العرض')&&admin.includes('نهاية العرض'));
+ck('public hub renders awareness messages inline after the greeting without a modal',home.includes('/platform.js')&&platform.includes("document.querySelector('#app .greet')")&&platform.includes("host.after(box)")&&!platform.includes("class: 'awareness-space', role: 'dialog'"));
+ck('awareness content is visually distinct and responsive in the shared stylesheet',css.includes('.awareness-space')&&css.includes('.awareness-item'));
+let failed=0;for(const [n,ok] of checks){console.log(`${ok?'PASS':'FAIL'} ${n}`);if(!ok)failed++;}console.log(`\n${checks.length-failed}/${checks.length} awareness checks passed.`);if(failed)process.exitCode=1;

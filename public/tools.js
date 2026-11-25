@@ -4,7 +4,7 @@
   if (window.TOOLS) return;
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fm = n => Number(n || 0).toLocaleString('ar', { maximumFractionDigits: 2 });
-  const css = 'body{font-family:Tahoma,Arial,sans-serif;margin:24px;color:#173f36;line-height:1.7}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:18px 0 6px}.muted{color:#5d7167;font-size:13px}table{width:100%;border-collapse:collapse;margin:8px 0}th,td{border:1px solid #cfd8d2;padding:7px 9px;text-align:right}th{background:#f1f5ef}.tot{font-weight:700;background:#f8f4e8}.box{border:2px solid #173f36;border-radius:12px;padding:14px 18px;margin:12px 0}.sign{display:flex;justify-content:space-between;margin-top:46px}.sign div{width:40%;border-top:1px solid #173f36;padding-top:6px;text-align:center}@media print{button{display:none}}';
+  const css = '*,*:before,*:after{box-sizing:border-box}html{direction:rtl}body{font-family:Tahoma,Arial,sans-serif;margin:18mm 14mm;color:#173f36;line-height:1.65;print-color-adjust:exact;-webkit-print-color-adjust:exact}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:18px 0 6px}h3{font-size:14px;margin:14px 0 6px}.muted{color:#5d7167;font-size:12px}table{width:100%;border-collapse:collapse;margin:8px 0;break-inside:auto}thead{display:table-header-group}tfoot{display:table-footer-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #cfd8d2;padding:6px 7px;text-align:right;vertical-align:top}th{background:#f1f5ef}.tot{font-weight:700;background:#f8f4e8}.box{border:2px solid #173f36;border-radius:12px;padding:14px 18px;margin:12px 0}.sign{display:flex;justify-content:space-between;margin-top:46px}.sign div{width:40%;border-top:1px solid #173f36;padding-top:6px;text-align:center}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.stat{border:1px solid #cfd8d2;padding:8px;border-radius:7px}.stat b{display:block;font-size:18px}.table-wrap{overflow:visible!important}.fail-mark{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;padding:2px 5px;border:2px solid #c62828;border-radius:999px;color:#b71c1c;font-weight:900;background:#fff3f2}@page{size:A4 portrait;margin:12mm}@media print{button,a.btn{display:none!important}body{margin:0}.stats{break-inside:avoid}}';
   function print(title, body) {
     const w = window.open('', '_blank');
     if (!w) { (window.TQ ? TQ.toast : alert)('اسمح بالنوافذ المنبثقة ثم أعد المحاولة للطباعة.'); return; }
@@ -66,9 +66,22 @@
     const bx = printing ? 'border:1px solid #cfd8d2;padding:7px 9px;text-align:right' : 'border-bottom:1px solid #e0e9df;padding:8px 9px;text-align:right', hd = 'background:#f1f5ef;font-weight:700;white-space:normal';
     const summary = t.hidden ? '' : '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + [['المعدل',t.average==null?'—':fm(t.average)+'٪'],['التقدير',t.gradeLabel||'—'],['الترتيب',t.rank==null?'—':ordinal(t.rank)+' من '+t.rankOutOf]].map(([k,v])=>'<div style="border:1px solid #cfd8d2;border-radius:9px;padding:9px 12px;min-width:110px"><small>'+esc(k)+'</small><br><b>'+esc(v)+'</b></div>').join('') + '</div>';
     if (!t.rows.length) return summary + '<p class="muted">لا توجد درجات مسجلة بعد.</p>';
-    const head = '<tr><th style="' + bx + ';' + hd + '">المادة</th>' + t.columns.map(c => '<th style="' + bx + ';' + hd + '">' + esc(c.label) + '</th>').join('') + '<th style="' + bx + ';' + hd + '">المجموع</th><th style="' + bx + ';' + hd + '">النسبة</th></tr>';
+    // Term totals are calculated independently from the assessment columns. The red
+    // circle belongs only to each term total (never to individual marks or the annual total).
+    const terms = ['الفصل الأول', 'الفصل الثاني'];
+    const termTotal = (r, term) => {
+      const cols = t.columns.filter(c => c.term === term);
+      const marks = cols.map(c => r.cells && r.cells[c.key]).filter(x => x && !x.hidden && Number.isFinite(Number(x.score)) && Number.isFinite(Number(x.max)));
+      if (!marks.length) return null;
+      return { score: marks.reduce((n, x) => n + Number(x.score), 0), max: marks.reduce((n, x) => n + Number(x.max), 0) };
+    };
+    const failMark = (v) => v && v.max > 0 && v.score < v.max / 2
+      ? '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:27px;min-height:27px;padding:2px 6px;border:2px solid #c62828;border-radius:999px;color:#b71c1c;font-weight:900;background:#fff3f2;line-height:1">' + fm(v.score) + '</span>'
+      : (v ? fm(v.score) : '—');
+    const head = '<tr><th style="' + bx + ';' + hd + '">المادة</th>' + t.columns.map(c => '<th style="' + bx + ';' + hd + '">' + esc(c.label) + '</th>').join('') + terms.map(term => '<th style="' + bx + ';' + hd + '">إجمالي ' + esc(term) + '</th>').join('') + '<th style="' + bx + ';' + hd + '">المجموع السنوي</th><th style="' + bx + ';' + hd + '">النسبة</th></tr>';
     const body = t.rows.map(r => '<tr><td style="' + bx + ';font-weight:700">' + esc(r.subject) + '</td>' + t.columns.map(c => { const x = r.cells[c.key]; return '<td style="' + bx + '">' + (!x ? '—' : x.hidden ? '<span style="filter:blur(6px);user-select:none">88 / 100</span>' : fm(x.score) + ' / ' + fm(x.max)) + '</td>'; }).join('')
-      + '<td style="' + bx + '">' + (r.total === null ? '<span style="filter:blur(6px);user-select:none">88</span>' : fm(r.total) + ' / ' + fm(r.max)) + '</td><td style="' + bx + '">' + (r.percent === null ? '—' : fm(r.percent) + '٪') + '</td></tr>').join('');
+      + terms.map(term => { const v = termTotal(r, term); return '<td style="' + bx + ';font-weight:700">' + (t.hidden ? '<span style="filter:blur(6px);user-select:none">88 / 100</span>' : (v ? failMark(v) + ' / ' + fm(v.max) : '—')) + '</td>'; }).join('')
+      + '<td style="' + bx + '">' + (r.total === null ? (t.hidden ? '<span style="filter:blur(6px);user-select:none">88</span>' : '—') : fm(r.total) + ' / ' + fm(r.max)) + '</td><td style="' + bx + '">' + (r.percent === null ? '—' : fm(r.percent) + '٪') + '</td></tr>').join('');
     return summary + (t.hidden ? '<div style="background:#fff7e0;border:2px solid #e6c36a;border-radius:14px;padding:10px 14px;margin:8px 0">🔒 ' + esc(t.hiddenReason) + '</div>' : '') + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px">' + head + body + '</table></div>';
   }
   function transcriptPrint(t) {

@@ -31,6 +31,18 @@
     const bar = mk('div', { class: 'ticker', role: 'marquee', 'aria-live': 'off' }, mk('span', { text: s.newsTicker.text }));
     const top = document.querySelector('#app .top'); if (top) top.after(bar); else document.body.prepend(bar);
   }
+  // Scheduled awareness content is embedded in the page flow; it never opens a modal or blocks navigation.
+  function applyAwareness(s) {
+    document.querySelector('.awareness-space')?.remove();
+    const host = document.querySelector('#app .greet');
+    const items = Array.isArray(s?.awarenessItems) ? s.awarenessItems : [];
+    if (!host || !items.length) return;
+    const box = mk('section', { class: 'awareness-space', 'aria-label': 'مساحة توعوية' },
+      mk('div', { class: 'awareness-mark', text: '🌱 مساحة توعوية' }),
+      ...items.slice(0, 3).map(x => mk('article', { class: 'awareness-item' }, mk('b', { text: x.title }), mk('p', { text: x.text })))
+    );
+    host.after(box);
+  }
   // ----- timed announcement: never covers the screen, shows briefly, comes back every few minutes -----
   let adNode = null, adTimer = null;
   function hideAd() { clearTimeout(adTimer); if (adNode) { adNode.classList.add('out'); const n = adNode; setTimeout(() => n.remove(), 350); adNode = null; } }
@@ -86,13 +98,13 @@
   }
   async function boot() {
     document.getElementById('aboutBtn')?.addEventListener('click', openAbout);
-    const s = await load(); applyBrand(s); applyTicker(s); loadAbout();
+    const s = await load(); applyBrand(s); applyTicker(s); applyAwareness(s); loadAbout();
     setTimeout(() => showAd(activeAd(settings), FIRST_SHOW_MS), 700);
     setInterval(async () => {
-      if (document.hidden) return; const fresh = await load(); applyTicker(fresh); const ad = activeAd(fresh); if (ad) showAd(ad, REPEAT_SHOW_MS); else hideAd();
+      if (document.hidden) return; const fresh = await load(); applyTicker(fresh); applyAwareness(fresh); const ad = activeAd(fresh); if (ad) showAd(ad, REPEAT_SHOW_MS); else hideAd();
     }, REPEAT_EVERY_MS);
   }
   boot();
-  if (window.LIVE) LIVE.on(async d => { if (d.s && d.s !== 'platform' && d.s !== 'poll' && d.s !== 'online' && d.s !== 'wake' && d.s !== 'flushed' && d.s !== 'manual') return; const fresh = await load(); if (fresh) { applyBrand(fresh); applyTicker(fresh); } loadAbout(); });
+  if (window.LIVE) LIVE.on(async d => { if (d.s && d.s !== 'platform' && d.s !== 'poll' && d.s !== 'online' && d.s !== 'wake' && d.s !== 'flushed' && d.s !== 'manual') return; const fresh = await load(); if (fresh) { applyBrand(fresh); applyTicker(fresh); applyAwareness(fresh); } loadAbout(); });
   window.__platform = { openAbout, showAd, hideAd };
 })();

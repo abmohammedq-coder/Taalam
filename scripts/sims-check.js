@@ -144,6 +144,9 @@ c.save()`]);
     } catch (e) { console.error('sims server part crashed:', e.stack || e, '\n--- server log ---\n' + log); process.exitCode = 1; }
     child.kill('SIGTERM'); await wait(200);
   } else console.log('SKIP server part of the experiment checks: poppler or python reportlab is missing here.');
+  const rendererSource=fs.readFileSync(path.join(root,'public','sim','render.js'),'utf8');
+  ck('solid-volume renderer uses WebGL triangle meshes, depth testing and perspective rather than only a 2-D wireframe',rendererSource.includes("getContext('webgl'")&&rendererSource.includes('gl.drawArrays(gl.TRIANGLES')&&rendererSource.includes('gl.enable(gl.DEPTH_TEST)')&&rendererSource.includes('uAspect'));
+  ck('solid-volume lesson retains a 2-D canvas fallback when WebGL is unavailable',rendererSource.includes("glRenderer ? null : cv.getContext('2d')")&&rendererSource.includes('DRAW[templateId](ctx'));
   let failed = 0; for (const [label, ok] of checks) { console.log((ok ? 'PASS ' : 'FAIL ') + label); if (!ok) failed++; }
   console.log(`\n${checks.length - failed}/${checks.length} experiment checks passed.`); if (failed) process.exitCode = 1;
   fs.rmSync(tmp, { recursive: true, force: true });

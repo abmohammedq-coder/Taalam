@@ -50,6 +50,7 @@ const root = path.resolve(__dirname, '..'), wait = ms => new Promise(r => setTim
     ck('existing collective grade sheet keeps its layout and marks each semester group red only below half of its own maximum', schoolUi.includes('class="grade-ledger"') && schoolUi.includes('class="fail-mark"') && schoolUi.includes('Number(v.firstTotal.score)<Number(v.firstTotal.max)/2') && schoolUi.includes('Number(v.secondTotal.score)<Number(v.secondTotal.max)/2'));
     ck('school request buttons parse the full request ID and action before sending the review request', schoolUi.includes("String(b.dataset.schoolRequest||'').split('|')") && !schoolUi.includes('const [id,action]=b.dataset.schoolRequest,'));
     ck('school result card uses the Yemen-style bordered result summary and all-subject report', schoolUi.includes('class="note"') && schoolUi.includes('اختر «كل المواد»') && schoolUi.includes('النتيجة النهائية للفصل الدراسي'));
+    ck('printed semester result circles each subject semester total below half, matching the grade ledger, without circling subject marks or annual aggregate', schoolUi.includes('v.max>0&&v.score<v.max/2?`<span class="fail-mark"') && schoolUi.includes('class="fail-mark" title="إجمالي مادة الفصل أقل من نصف الدرجة النهائية"') && schoolUi.includes('class="fail-mark"') && schoolUi.includes('fail-mark{display:inline-flex') );
 
     // ---------- teachers ----------
     const opts = (await request('GET', '/api/school-admin/academic-options', { cookie: sac })).json;

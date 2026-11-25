@@ -1,13 +1,33 @@
 'use strict';
-// Draws and drives the simulations defined in templates.js. Loaded only when a student (or an admin
-// reviewing) opens an experiment, so it never slows the rest of the app. 2-D canvas only: it works
-// on weak devices; solids are drawn as a rotatable wireframe (drag to rotate).
+// Draws and drives the simulations defined in templates.js. Loaded on demand. Most diagrams use
+// 2-D canvas for weak devices; solid-volume lessons use a real WebGL 3-D mesh when available.
 (function () {
   const T = window.SIMT; if (!T) throw new Error('templates.js must be loaded first');
   const el = (tag, attrs, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) { if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? '' : v); } for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c))); return n; };
   const fmt = v => (Math.round(v * 1000) / 1000).toLocaleString('ar', { maximumFractionDigits: 3 });
   const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim() || null;
   const COL = () => ({ ink: css('--ink') || '#20352d', green: css('--green') || '#173f36', green2: css('--green2') || '#2b7a5f', gold: css('--gold') || '#d6a85f', line: css('--line') || '#eadfc8', bad: css('--bad') || '#d8533f', muted: css('--muted') || '#5d7167', bg: '#fffdf6' });
+  // A small dependency-free WebGL renderer for the solids lesson. Geometry is built from
+  // triangles, lit per face, depth-tested and perspective-projected: this is an actual 3-D scene.
+  function createSolidWebGL(canvas) {
+    let gl; try { gl = canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'low-power' }); } catch { return null; }
+    if (!gl) return null;
+    const vs = `attribute vec3 aPosition; attribute vec3 aNormal; uniform vec2 uRotation; uniform float uAspect; varying float vLight; void main(){float cy=cos(uRotation.x),sy=sin(uRotation.x),cp=cos(uRotation.y),sp=sin(uRotation.y);vec3 p=aPosition;vec3 n=aNormal;float x=p.x*cy+p.z*sy;float z=-p.x*sy+p.z*cy;float y=p.y*cp-z*sp;float zz=p.y*sp+z*cp;float nx=n.x*cy+n.z*sy;float nz=-n.x*sy+n.z*cy;float ny=n.y*cp-nz*sp;float nzz=n.y*sp+nz*cp;float depth=3.8-zz;float focal=1.65;gl_Position=vec4((x*focal)/(depth*uAspect),(y*focal)/depth,((depth-1.2)/4.5),1.0);vec3 normal=normalize(vec3(nx,ny,nzz));vec3 light=normalize(vec3(-0.45,0.8,0.7));vLight=0.42+0.58*max(dot(normal,light),0.0);}`;
+    const fs = `precision mediump float; varying float vLight; void main(){vec3 base=vec3(0.12,0.48,0.34);vec3 lit=base*vLight+vec3(0.08,0.10,0.08)*(1.0-vLight);gl_FragColor=vec4(lit,1.0);}`;
+    function shader(type, source) { const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){gl.deleteShader(sh);return null;}return sh; }
+    const a=shader(gl.VERTEX_SHADER,vs),b=shader(gl.FRAGMENT_SHADER,fs);if(!a||!b)return null;const program=gl.createProgram();gl.attachShader(program,a);gl.attachShader(program,b);gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))return null;
+    const pos=gl.createBuffer(),norm=gl.createBuffer(),locP=gl.getAttribLocation(program,'aPosition'),locN=gl.getAttribLocation(program,'aNormal'),locR=gl.getUniformLocation(program,'uRotation'),locA=gl.getUniformLocation(program,'uAspect');
+    const verts=[];const tri=(A,B,C)=>{const U=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],V=[C[0]-A[0],C[1]-A[1],C[2]-A[2]],N=[U[1]*V[2]-U[2]*V[1],U[2]*V[0]-U[0]*V[2],U[0]*V[1]-U[1]*V[0]],L=Math.hypot(...N)||1;N.forEach((v,i)=>N[i]=v/L);for(const P of [A,B,C])verts.push(...P,...N);};
+    const quad=(a,b,c,d)=>{tri(a,b,c);tri(a,c,d);};
+    const cylinder=(r,h)=>{const n=48,y=h/2;for(let i=0;i<n;i++){const t=i*2*Math.PI/n,u=(i+1)*2*Math.PI/n,A=[r*Math.cos(t),-y,r*Math.sin(t)],B=[r*Math.cos(u),-y,r*Math.sin(u)],C=[r*Math.cos(u),y,r*Math.sin(u)],D=[r*Math.cos(t),y,r*Math.sin(t)];quad(A,B,C,D);tri([0,-y,0],B,A);tri([0,y,0],D,C);}};
+    const cone=(r,h)=>{const n=48,y=h/2,ap=[0,y,0];for(let i=0;i<n;i++){const t=i*2*Math.PI/n,u=(i+1)*2*Math.PI/n,A=[r*Math.cos(t),-y,r*Math.sin(t)],B=[r*Math.cos(u),-y,r*Math.sin(u)];tri(A,B,ap);tri([0,-y,0],B,A);}};
+    const sphere=r=>{const lat=24,lon=36;for(let i=0;i<lat;i++){const p1=-Math.PI/2+i*Math.PI/lat,p2=-Math.PI/2+(i+1)*Math.PI/lat;for(let j=0;j<lon;j++){const t1=j*2*Math.PI/lon,t2=(j+1)*2*Math.PI/lon;const point=(p,t)=>[r*Math.cos(p)*Math.cos(t),r*Math.sin(p),r*Math.cos(p)*Math.sin(t)];quad(point(p1,t1),point(p1,t2),point(p2,t2),point(p2,t1));}}};
+    const cube=(x,y,z)=>{const X=x/2,Y=y/2,Z=z/2;quad([-X,-Y,Z],[X,-Y,Z],[X,Y,Z],[-X,Y,Z]);quad([X,-Y,-Z],[-X,-Y,-Z],[-X,Y,-Z],[X,Y,-Z]);quad([-X,-Y,-Z],[-X,-Y,Z],[-X,Y,Z],[-X,Y,-Z]);quad([X,-Y,Z],[X,-Y,-Z],[X,Y,-Z],[X,Y,Z]);quad([-X,Y,Z],[X,Y,Z],[X,Y,-Z],[-X,Y,-Z]);quad([-X,-Y,-Z],[X,-Y,-Z],[X,-Y,Z],[-X,-Y,Z]);};
+    const pyramid=(base,h)=>{const q=base/2,ap=[0,h/2,0],A=[-q,-h/2,-q],B=[q,-h/2,-q],C=[q,-h/2,q],D=[-q,-h/2,q];quad(A,D,C,B);tri(A,B,ap);tri(B,C,ap);tri(C,D,ap);tri(D,A,ap);};
+    function build(p){verts.length=0;const s=Math.round(p.solid),a0=Math.max(.5,Number(p.a)||6),b0=Math.max(.5,Number(p.b)||4),h0=Math.max(.5,Number(p.h)||8);let x=1,y=1,z=1;if(s===0)cube(1,1,1);else if(s===1){const m=Math.max(a0,b0,h0);x=a0/m;y=h0/m;z=b0/m;cube(x,y,z);}else if(s===2){const m=Math.max(a0*2,h0);cylinder(a0/m*1.35,h0/m*2.2);}else if(s===3){const m=Math.max(a0*2,h0);cone(a0/m*1.35,h0/m*2.2);}else if(s===4)sphere(1);else{const m=Math.max(a0,h0);pyramid(a0/m*1.8,h0/m*2.2);}const data=new Float32Array(verts);gl.bindBuffer(gl.ARRAY_BUFFER,pos);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW);gl.vertexAttribPointer(locP,3,gl.FLOAT,false,24,0);gl.enableVertexAttribArray(locP);gl.bindBuffer(gl.ARRAY_BUFFER,norm);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW);gl.vertexAttribPointer(locN,3,gl.FLOAT,false,24,12);gl.enableVertexAttribArray(locN);return data.length/6;}
+    let count=0,lastKey='';
+    return { draw(p,v,k){const key=[p.solid,p.a,p.b,p.h].join(':');if(key!==lastKey){count=build(p);lastKey=key;}const w=canvas.width,h=canvas.height;gl.viewport(0,0,w,h);const hex=k?.bg||'#fffdf6';const rgb=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);gl.clearColor(rgb[0],rgb[1],rgb[2],1);gl.enable(gl.DEPTH_TEST);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(program);gl.uniform2f(locR,v.yaw,v.pitch);gl.uniform1f(locA,w/Math.max(1,h));gl.drawArrays(gl.TRIANGLES,0,count);}, destroy(){gl.deleteBuffer(pos);gl.deleteBuffer(norm);gl.deleteProgram(program);} };
+  }
   const arrow = (c, x1, y1, x2, y2, col, label) => { c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 3; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); const a = Math.atan2(y2 - y1, x2 - x1); c.beginPath(); c.moveTo(x2, y2); c.lineTo(x2 - 10 * Math.cos(a - 0.4), y2 - 10 * Math.sin(a - 0.4)); c.lineTo(x2 - 10 * Math.cos(a + 0.4), y2 - 10 * Math.sin(a + 0.4)); c.closePath(); c.fill(); if (label) { c.font = 'bold 13px Tahoma,Arial'; c.textAlign = 'center'; c.fillText(label, (x1 + x2) / 2, Math.min(y1, y2) - 8); } };
   const text = (c, s, x, y, col, size = 13, align = 'center') => { c.fillStyle = col; c.font = (size >= 15 ? 'bold ' : '') + size + 'px Tahoma,Arial'; c.textAlign = align; c.fillText(s, x, y); };
 
@@ -87,15 +107,15 @@
     const tpl = T.TEMPLATES[templateId]; if (!tpl) throw new Error('نوع التجربة غير معروف');
     const base = T.validate(templateId, initial || {}); let params = base.params; const locked = opts.lockedParams || [];
     const view = { yaw: 0.6, pitch: 0.45 }; let t = 0, playing = false, speed = 1, raf = 0, last = 0, res = tpl.compute(params);
-    const cv = el('canvas', { class: 'sim-cv', role: 'img', 'aria-label': tpl.title }), ctx = cv.getContext('2d');
+    const cv = el('canvas', { class: 'sim-cv', role: 'img', 'aria-label': tpl.title }), glRenderer = templateId === 'solid_volume' ? createSolidWebGL(cv) : null, ctx = glRenderer ? null : cv.getContext('2d');
     const results = el('div', { class: 'sim-results', 'aria-live': 'polite' }), notes = el('div', { class: 'sim-notes' }), ctrls = el('div', { class: 'sim-params' });
     const play = el('button', { type: 'button', class: 'btn', text: '▶ تشغيل' }), reset = el('button', { type: 'button', class: 'btn alt', text: '↺ من البداية' });
     const spd = el('select', { class: 'input sim-speed', 'aria-label': 'سرعة العرض' }, ...[[0.25, 'بطيء جدًا'], [0.5, 'بطيء'], [1, 'عادي'], [2, 'سريع']].map(([v, tt]) => el('option', { value: v, text: tt, ...(v === 1 ? { selected: true } : {}) })));
     const timeline = el('input', { type: 'range', class: 'sim-time', min: 0, max: 1000, value: 0, 'aria-label': 'موضع الزمن' });
-    const moving = tpl.kind === 'motion', root = el('div', { class: 'sim' }, el('p', { class: 'sim-intro', text: tpl.intro }), el('div', { class: 'sim-stage' }, cv), moving ? el('div', { class: 'sim-bar' }, play, reset, spd, timeline) : null, ctrls, results, notes);
+    const moving = tpl.kind === 'motion', root = el('div', { class: 'sim' }, el('p', { class: 'sim-intro', text: tpl.intro }), el('div', { class: 'sim-stage' }, cv), glRenderer ? el('p', { class: 'hint', text: 'مجسم ثلاثي الأبعاد قابل للدوران: اسحب بإصبعك أو بالفأرة لتغيير زاوية الرؤية.' }) : null, moving ? el('div', { class: 'sim-bar' }, play, reset, spd, timeline) : null, ctrls, results, notes);
     host.replaceChildren(root);
     function fit() { const w = Math.max(240, cv.parentElement.clientWidth || host.clientWidth || 320), dpr = Math.min(window.devicePixelRatio || 1, 2), h = Math.round(w * (w < 480 ? 0.78 : 0.56)); cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); cv._w = w; cv._h = h; }
-    function draw() { if (!cv._w) fit(); const k = COL(); ctx.clearRect(0, 0, cv._w, cv._h); ctx.fillStyle = k.bg; ctx.fillRect(0, 0, cv._w, cv._h); DRAW[templateId](ctx, cv._w, cv._h, res, t, params, view, k); }
+    function draw() { if (!cv._w) fit(); const k = COL(); if (glRenderer) { glRenderer.draw(params, view, k); return; } ctx.clearRect(0, 0, cv._w, cv._h); ctx.fillStyle = k.bg; ctx.fillRect(0, 0, cv._w, cv._h); DRAW[templateId](ctx, cv._w, cv._h, res, t, params, view, k); }
     function showResults() {
       results.replaceChildren(el('h4', { text: 'النتائج (محسوبة من القوانين)' }), ...res.outputs.map(o => el('div', { class: 'sim-row' }, el('span', { class: 'sim-k', text: o.label }), el('b', { class: 'sim-v', text: fmt(o.value) + ' ' + o.unit }), o.formula ? el('small', { class: 'sim-f', text: o.formula }) : null)));
       notes.replaceChildren(...res.notes.map(n => el('p', { class: 'hint', text: 'ℹ️ ' + n })));
@@ -126,7 +146,7 @@
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { fit(); draw(); }) : null; if (ro) ro.observe(cv.parentElement); else window.addEventListener('resize', () => { fit(); draw(); });
     buildControls(); showResults(); fit(); draw();
     if (moving && opts.autoplay) play.click();
-    return { get params() { return params; }, get results() { return res; }, destroy() { playing = false; cancelAnimationFrame(raf); if (ro) ro.disconnect(); }, setParams(p) { params = T.validate(templateId, { ...params, ...p }).params; t = 0; recompute(true); } };
+    return { get params() { return params; }, get results() { return res; }, destroy() { playing = false; cancelAnimationFrame(raf); if (ro) ro.disconnect(); if (glRenderer) glRenderer.destroy(); }, setParams(p) { params = T.validate(templateId, { ...params, ...p }).params; t = 0; recompute(true); } };
   }
   window.SIM = { mount, templates: T.TEMPLATES, _draw: DRAW }; // _draw is exposed for tests
 })();

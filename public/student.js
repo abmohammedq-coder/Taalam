@@ -611,22 +611,35 @@
     function ask() {
       const q = qs[idx]; locked = false;
       const progress = el('div', { class: 'bar', 'aria-label': 'تقدّم الاختبار' }, el('i', { style: 'width:' + Math.round(idx / qs.length * 100) + '%' }));
-      const listen1 = el('button', { class: 'btn alt', type: 'button', text: '🔊 اسمع السؤال', onclick: () => say(q.q) });
       const holder = el('div', { style: 'display:flex;flex-direction:column;gap:10px' });
+      const answerControls = [];
+      let voiceFallback = null;
+      const enableAnswers = () => { answerControls.forEach(control => { control.disabled = false; }); if (voiceFallback) voiceFallback.remove(); };
+      const voiceFailed = () => {
+        if (voiceFallback) return;
+        voiceFallback = el('button', { class: 'btn alt', type: 'button', text: 'متابعة بدون صوت', onclick: () => enableAnswers() });
+        holder.append(el('div', { class: 'notice', text: 'تعذّرت قراءة السؤال صوتيًا. أعد المحاولة بزر «اسمع السؤال»، أو اختر المتابعة بدون صوت.' }), voiceFallback);
+      };
+      const readQuestion = () => {
+        answerControls.forEach(control => { control.disabled = true; });
+        if (voiceFallback) voiceFallback.remove(); voiceFallback = null;
+        speak(q.q, [], { onEnd: enableAnswers, onFail: voiceFailed });
+      };
+      const listen1 = el('button', { class: 'btn alt', type: 'button', text: '🔊 اسمع السؤال مرة أخرى', onclick: readQuestion });
       const nextBtn = () => el('button', { class: 'btn', type: 'button', text: idx === qs.length - 1 ? 'شاهد نتيجتي 🏁' : 'السؤال التالي ◀', onclick: next });
       if (q.type === 'mcq') {
-        const btns = q.options.map((o, k) => el('button', { class: 'opt', type: 'button', onclick: () => {
+        const btns = q.options.map((o, k) => el('button', { class: 'opt', type: 'button', disabled: true, onclick: () => {
           if (locked) return; locked = true; const ok = k === q.answer; btns.forEach((b, j) => { b.disabled = true; if (j === q.answer) b.classList.add('right'); else if (j === k) b.classList.add('wrong'); });
           if (ok) { correct++; beep('ok'); } else beep('bad');
           if (P.sound) say(ok ? pick1(PRAISE_SAY) : 'ليست الإجابة الصحيحة. الإجابة الصحيحة هي: ' + q.options[q.answer]);
           const f = feedback(ok, (ok ? '🎉 أحسنت! إجابة صحيحة.' : '💪 لا بأس، الإجابة الصحيحة: ' + q.options[q.answer]) + (q.why ? '\n' + q.why : '')); f.style.whiteSpace = 'pre-line';
           holder.append(f, nextBtn());
         } }, el('b', { text: letters[k] }), o));
-        holder.append(...btns);
+        answerControls.push(...btns); holder.append(...btns);
       } else {
-        const ta = el('textarea', { class: 'input', placeholder: 'اكتب إجابتك هنا بكلماتك…', maxlength: '500', 'aria-label': 'إجابتك' });
-        const mic = el('button', { class: 'mic', type: 'button', text: '🎤', 'aria-label': 'تحدّث بإجابتك', onclick: () => listen(mic, ta, () => {}) });
-        const check = el('button', { class: 'btn', type: 'button', text: '✅ صحّح إجابتي', onclick: async () => {
+        const ta = el('textarea', { class: 'input', disabled: true, placeholder: 'اكتب إجابتك هنا بكلماتك…', maxlength: '500', 'aria-label': 'إجابتك' });
+        const mic = el('button', { class: 'mic', type: 'button', disabled: true, text: '🎤', 'aria-label': 'تحدّث بإجابتك', onclick: () => listen(mic, ta, () => {}) });
+        const check = el('button', { class: 'btn', type: 'button', disabled: true, text: '✅ صحّح إجابتي', onclick: async () => {
           if (locked) return; if (ta.value.trim().length < 2) { toast('اكتب إجابتك أولًا'); return; }
           locked = true; check.disabled = true; check.textContent = 'أصحّح…';
           try {
@@ -637,10 +650,11 @@
             holder.append(feedback(g.score >= 1, (g.score === 2 ? '🎉 ممتاز! ' : g.score === 1 ? '👍 إجابتك جيدة وتحتاج قليلًا من الإضافة. ' : '💪 حاول مرة أخرى لاحقًا. ') + (g.feedback || '')), g.score < 2 ? el('div', { class: 'notice', text: 'إجابة الكتاب: ' + q.model }) : null, nextBtn());
           } catch (e) { locked = false; check.disabled = false; check.textContent = '✅ صحّح إجابتي'; toast(e.message); }
         } });
-        holder.append(el('div', { class: 'row' }, mic, ta), check);
+        answerControls.push(mic, ta, check); holder.append(el('div', { class: 'row' }, mic, ta), check);
       }
       setBody(progress, el('div', { class: 'hint', text: 'السؤال ' + AR(idx + 1) + ' من ' + AR(qs.length) }), q.subject ? el('div', { class: 'hint', text: 'من مادة ' + q.subject }) : null, el('div', { class: 'q', text: q.q }), listen1, holder);
-      if (P.stage === 'kids') setTimeout(() => say(q.q), 350);
+      // Read the complete question before enabling any answer control for every age group.
+      readQuestion();
     }
     function results() {
       const score = correct + partial * .5, pct = score / qs.length; const em = pct >= .8 ? '🏆' : pct >= .5 ? '👍' : '💪';
